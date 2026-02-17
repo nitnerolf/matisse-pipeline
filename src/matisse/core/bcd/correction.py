@@ -3,7 +3,7 @@
 import warnings
 from collections.abc import Sequence
 from copy import deepcopy
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -12,10 +12,17 @@ import pandas as pd
 from astropy.io import fits
 from numpy.typing import NDArray
 
-from matisse.core.utils.log_utils import log
+from matisse.core.bcd.io_utils import load_bcd_corrections
+from matisse.core.bcd.merge import merge_by_tpl_start
+from matisse.core.bcd.quality_metrics import (
+    compute_correction_metrics,
+    print_correction_metrics,
+)
+from matisse.core.bcd.visualization import plot_bcd_correction
+from matisse.core.utils.log_utils import console, log
 from matisse.core.utils.oifits_reader import OIFitsReader
 
-from .config import BASELINE_PAIRS, BCD_BASELINE_MAP, BCDConfig
+from .config import BASELINE_PAIRS, BCD_BASELINE_MAP, BCD_MODES_TO_CORRECT, BCDConfig
 from .outlier_filter import filter_outliers_custom
 
 FloatArray = NDArray[np.floating[Any]]
@@ -171,6 +178,9 @@ def compute_bcd_corrections(
     combined_spectral = _combine_baseline_pairs(
         corrections_spectral_arr, config.bcd_mode
     )
+    # NOTES: shape = (n_bl_pairs, n_files*2, n_wav)
+    # combined_spectral shape should be (3, n_files*2, n_wav) for 3 baseline pairs
+    # [1, 2] not affected, [3, 4, 5, 6] combined following BCD_BASELINE_MAP
 
     # Fit magic number with polynomial laws
     assert wavelengths is not None
@@ -182,8 +192,12 @@ def compute_bcd_corrections(
     median_corrections: list[FloatArray] = []
     std_corrections: list[FloatArray] = []
     for i in range(6):
-        median_corr = np.nanmedian(corrections_spectral_arr[:, i], axis=0)
-        std_corr = np.nanstd(corrections_spectral_arr[:, i], axis=0)
+        if corrections_spectral_arr.shape[0] > 1:
+            median_corr = np.nanmedian(corrections_spectral_arr[:, i], axis=0)
+            std_corr = np.nanstd(corrections_spectral_arr[:, i], axis=0)
+        else:
+            median_corr = corrections_spectral_arr[0, i]
+            std_corr = np.zeros_like(median_corr)
         median_corrections.append(np.asarray(median_corr, dtype=float))
         std_corrections.append(np.asarray(std_corr, dtype=float))
 
@@ -267,11 +281,17 @@ def fit_magic_numbers(
         wa = [8.2]
         wd = [12.0]
 
+    n_files = combined_spectral[0].shape[0] // 2
+    log.info(f"Fitting polynomial to magic numbers for {n_files} combined spectra")
+
     # Only plot baselines 1 and 2 (combined pairs)
     result_poly_coef: list[FloatArray] = []
     for i in range(1, 3):
         data = combined_spectral[i]
-        median = np.nanmedian(data, axis=0)
+        if n_files > 1:
+            median = np.nanmedian(data, axis=0)
+        else:
+            median = data[0]  # Single file case
 
         coef_window: list[FloatArray] = []
         for w_start, w_end in zip(wa, wd, strict=True):
@@ -291,6 +311,407 @@ def fit_magic_numbers(
         result_poly_coef.append(np.asarray(coef_window, dtype=float))
 
     return np.asarray(result_poly_coef, dtype=float)
+
+
+def apply_bcd_corrections(
+    data_dir: Path,
+    corrections_dir: Path,
+    chopping: bool = False,
+    merge: bool = True,
+    split_chopping: bool = True,
+    plot: bool = True,
+    verbose: bool = False,
+) -> dict[str, dict[str, Any]]:
+    """Apply BCD polynomial corrections for all BCD positions.
+
+    For each BCD mode (IN_IN, IN_OUT, OUT_IN), load the data and correction
+    coefficients, make a deep copy of the data, and apply the correction to the
+    affected baselines in storage order (without reordering by BCD). The BCD
+    reordering is only applied later for display and merge.
+
+    For each pair of swapped baselines (baseline_idx1, baseline_idx2):
+      - baseline_idx1 (in display order) → storage index bcd_order[idx1] is
+        multiplied by poly_corr
+      - baseline_idx2 (in display order) → storage index bcd_order[idx2] is
+        divided by poly_corr
+
+    Parameters
+    ----------
+    data_dir : Path
+        Directory containing the OIFITS files.
+    corrections_dir : Path
+        Directory containing the CSV correction coefficient files.
+    chopping : bool, optional
+        Process chopped data. Default is False.
+    merge : bool, optional
+        Apply TPL start merging after correction. Default is True.
+    plot : bool, optional
+        Generate correction plots. Default is True.
+    verbose : bool, optional
+        Show detailed metrics tables for each file. Default is False.
+
+    Returns
+    -------
+    dict_data : dict
+        Dictionary {filename_base: dict_data} for each calibrator.
+    """
+
+    bases = _find_calibrator_filename_bases(data_dir, chopping=chopping)
+    if not bases:
+        raise ValueError(f"No calibrator files found in {data_dir}")
+
+    # Log processing configuration
+    console.rule("[bold cyan]BCD Correction Application[/bold cyan]")
+    log.info(f"Data directory: {data_dir.resolve()}")
+    log.info(f"Corrections directory: {corrections_dir.resolve()}")
+    log.info(f"Number of calibrator files found: {len(bases)}")
+    log.info(f"Chopping mode: {'enabled' if chopping else 'disabled'}")
+    log.info(f"Merge after correction: {'enabled' if merge else 'disabled'}")
+    log.info(f"Verbose output: {'enabled' if verbose else 'disabled'}")
+
+    if len(bases) > 1:
+        log.info(f"Processing files: {', '.join(bases)}")
+    else:
+        log.info(f"Processing file: {bases[0]}")
+    console.print()
+
+    dict_all = {}
+    for base in bases:
+        dict_all[base] = _apply_bcd_corrections_single(data_dir, corrections_dir, base)
+
+    chop_status = "noChop"
+    if chopping:
+        chop_status = "Chop"
+
+    # Collect summary metrics for all files
+    summary_results = []
+
+    for filename_base, dict_data in dict_all.items():
+        # Load raw data for metrics comparison
+        all_modes = ["OUT_OUT"] + BCD_MODES_TO_CORRECT
+        dict_raw = {}
+        for bcd_mode in all_modes:
+            dict_raw[bcd_mode] = OIFitsReader(
+                data_dir / f"{filename_base}_{bcd_mode}_{chop_status}.fits"
+            ).read()
+
+        # Save corrected OIFITS files
+        out_dir = _save_corrected_oifits(dict_data, data_dir, filename_base)
+
+        # Compute and print correction quality metrics
+        df_metrics = compute_correction_metrics(dict_data, dict_raw, corrections_dir)
+
+        if verbose:
+            console.rule(f"[bold cyan]{filename_base}[/bold cyan]")
+            print_correction_metrics(df_metrics)
+
+        mean_ratio = np.mean(df_metrics["σ_BCD/σ_ref"][2:])
+
+        if verbose:
+            log.info(
+                f"Mean ratio of σ_BCD/σ_ref (excluding unaffected baselines): {mean_ratio:.3f}"
+            )
+
+        is_recommended = mean_ratio <= 1.0
+        quality_label = "GOOD" if is_recommended else "POOR"
+        quality_color = "green" if is_recommended else "red"
+
+        # Store summary info
+        summary_results.append(
+            {
+                "filename": filename_base,
+                "mean_ratio": mean_ratio,
+                "quality": quality_label,
+                "color": quality_color,
+                "recommended": is_recommended,
+            }
+        )
+
+        if verbose:
+            recommendation_label = (
+                "recommended" if is_recommended else "not recommended"
+            )
+            log.info(
+                f"Overall correction quality: [{quality_color}]{quality_label}[/{quality_color}] "
+                f"=> merge is [{quality_color}]{recommendation_label}[/{quality_color}]"
+            )
+
+        if plot:
+            plot_bcd_correction(
+                dict_data,
+                corrections_dir=corrections_dir,
+                title=r"$V^2$ Comparison after BCD correction",
+            )
+
+        if merge:
+            merge_by_tpl_start(
+                str(out_dir),
+                save=True,
+                output_dir=out_dir,
+                separate_chopping=split_chopping,
+            )
+
+    # Display summary table for multiple files
+    if len(summary_results) > 1 or not verbose:
+        from rich.table import Table
+
+        console.rule("[bold]BCD Correction Summary[/bold]")
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("File", style="cyan", no_wrap=False)
+        table.add_column("Mean σ_BCD/σ_ref", justify="right")
+        table.add_column("Quality", justify="center")
+        table.add_column("Merge", justify="center")
+
+        for result in summary_results:
+            quality_styled = (
+                f"[{result['color']}]{result['quality']}[/{result['color']}]"
+            )
+            merge_styled = f"[{result['color']}]{'✓' if result['recommended'] else '✗'}[/{result['color']}]"
+            table.add_row(
+                result["filename"],
+                f"{result['mean_ratio']:.3f}",
+                quality_styled,
+                merge_styled,
+            )
+
+        console.print(table)
+
+        # Overall recommendation
+        all_good = all(r["recommended"] for r in summary_results)
+        if all_good:
+            console.print(
+                "[green]All corrections are GOOD quality. "
+                "Suggestion: rerun with --merge enabled for these corrections.[/green]"
+            )
+        else:
+            poor_count = sum(1 for r in summary_results if not r["recommended"])
+            console.print(
+                f"[yellow]Warning: {poor_count}/{len(summary_results)} "
+                f"corrections show POOR quality. Review before merging.[/yellow]"
+            )
+
+    return dict_all
+
+
+def _save_corrected_oifits(dict_data, data_dir, filename_base, chopping=False):
+    """Save BCD-corrected data to new OIFITS files.
+
+    For each BCD position, re-opens the original FITS file, injects the
+    corrected VIS2DATA column (without reordering baselines), adds history
+    keywords to the primary header, and writes to a sibling directory
+    named ``<parent>_bcd_corr/``.
+
+    Output files are named ``<filename_base>_<BCD>_<CHOP>_bcd_corr.fits``.
+
+    Parameters
+    ----------
+    dict_data : dict
+        Dictionary {bcd_mode: data_object} returned by
+        :func:`apply_bcd_corrections`.  The OUT_OUT entry is written
+        unchanged (no correction applied).
+    data_dir : Path
+        Directory containing the original OIFITS files.
+    filename_base : str
+        Common filename prefix.
+
+    Returns
+    -------
+    saved_files : dict
+        Mapping {bcd_mode: Path} of the written files.
+    """
+    data_dir = Path(data_dir)
+    out_dir = data_dir.parent / f"{data_dir.name}_bcd_corr"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    chop_status = "noChop"
+    if chopping:
+        chop_status = "Chop"
+
+    all_modes = ["OUT_OUT"] + BCD_MODES_TO_CORRECT
+
+    for bcd_mode in all_modes:
+        orig_path = data_dir / f"{filename_base}_{bcd_mode}_{chop_status}.fits"
+        out_path = out_dir / f"{filename_base}_{bcd_mode}_{chop_status}_bcd_corr.fits"
+
+        with fits.open(orig_path) as hdul:
+            # Inject corrected VIS2 (baselines kept in storage order)
+            corrected_vis2 = dict_data[bcd_mode].vis2["VIS2"]
+            hdul["OI_VIS2"].data["VIS2DATA"] = corrected_vis2
+
+            # Mark the file as corrected in the primary header
+            hdr = hdul[0].header
+            now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            hdr["HIERARCH BCD_CORR"] = (
+                True,
+                "BCD polynomial correction applied",
+            )
+            hdr["HIERARCH BCD_CORR_DATE"] = (
+                now,
+                "UTC date of BCD correction",
+            )
+            hdr["HIERARCH BCD_CORR_MODE"] = (
+                bcd_mode,
+                "BCD position of this file",
+            )
+            hdr["HISTORY"] = (
+                f"BCD polynomial correction applied on {now} (mode={bcd_mode})"
+            )
+
+            hdul.writeto(out_path, overwrite=True)
+
+    return out_dir
+
+
+def _apply_bcd_corrections_single(
+    data_dir, corrections_dir, filename_base, chopping=False
+):
+    """Apply BCD polynomial corrections for a single file."""
+    dict_data = {}
+
+    chop_status = "noChop"
+    if chopping:
+        chop_status = "Chop"
+
+    # Load OUT_OUT reference (no correction needed)
+    data_outout = OIFitsReader(
+        data_dir / f"{filename_base}_OUT_OUT_{chop_status}.fits"
+    ).read()
+    dict_data["OUT_OUT"] = data_outout
+
+    for bcd_mode in BCD_MODES_TO_CORRECT:
+        # Load data for this BCD position
+        data_bcd = OIFitsReader(
+            data_dir / f"{filename_base}_{bcd_mode}_{chop_status}.fits"
+        ).read()
+
+        # Deep copy to preserve the original
+        data_bcd_corr = deepcopy(data_bcd)
+
+        # Load correction coefficients
+        df_coeffs = load_bcd_corrections(corrections_dir, bcd_mode)
+        bcd_order = BCD_BASELINE_MAP[bcd_mode]
+        wl = data_bcd.wavelength * 1e6
+
+        # Apply corrections for each pair of affected baselines (j=0 and j=2)
+        for j in [0, 2]:
+            i_bl = df_coeffs["baseline_idx1"][j]
+            i_bl_unv = df_coeffs["baseline_idx2"][j]
+
+            poly_corr = _compute_poly_correction(wl, df_coeffs, j)
+
+            # Convert display indices to storage indices
+            storage_idx_bl = bcd_order[i_bl]
+            storage_idx_unv = bcd_order[i_bl_unv]
+
+            # Apply corrections in storage order
+            data_bcd_corr.vis2["VIS2"][storage_idx_bl] *= poly_corr
+            data_bcd_corr.vis2["VIS2"][storage_idx_unv] /= poly_corr
+
+        dict_data[bcd_mode] = data_bcd_corr
+
+    return dict_data
+
+
+def _compute_poly_correction(
+    wl: FloatArray,
+    df_coeffs: pd.DataFrame,
+    j: int,
+) -> FloatArray:
+    """
+    Compute piecewise polynomial correction across wavelength windows.
+
+    Evaluates polynomial coefficients (stored in descending power order)
+    over two wavelength windows and concatenates results. Supports any
+    polynomial order by dynamically detecting coefficient columns.
+
+    Parameters
+    ----------
+    wl : ndarray
+        Wavelength array in microns.
+    df_coeffs : DataFrame
+        Correction coefficients with columns coef_xN, ..., coef_x1, coef_x0
+        (descending power order), wl_start_um, wl_end_um.
+    j : int
+        Row index in df_coeffs; row j+1 is used for the second window.
+
+    Returns
+    -------
+    ndarray
+        Polynomial correction concatenated across wavelength windows.
+
+    Raises
+    ------
+    ValueError
+        If no polynomial coefficient columns are found.
+    """
+    # Extract and sort polynomial coefficient columns in descending power order
+    coef_cols = sorted(
+        [col for col in df_coeffs.columns if col.startswith("coef_x")],
+        key=lambda x: int(x.split("_x")[1]),
+        reverse=True,
+    )
+
+    if not coef_cols:
+        raise ValueError(
+            "No polynomial coefficient columns found (expected coef_x0, coef_x1, ...)"
+        )
+
+    # Compute wavelength cut between windows
+    wl_cut_corr = (df_coeffs["wl_end_um"].min() + df_coeffs["wl_start_um"].max()) / 2.0
+
+    # First window (low wavelengths)
+    coeffs_1 = np.array([df_coeffs[col][j] for col in coef_cols])
+    wl_mask1 = (wl >= wl.min()) & (wl <= wl_cut_corr)
+    poly_correction1 = np.polyval(coeffs_1, wl[wl_mask1])
+
+    # Second window (high wavelengths)
+    coeffs_2 = np.array([df_coeffs[col][j + 1] for col in coef_cols])
+    wl_mask2 = (wl > wl_cut_corr) & (wl <= wl.max())
+    poly_correction2 = np.polyval(coeffs_2, wl[wl_mask2])
+
+    # Concatenate in wavelength order (high to low)
+    return np.concatenate([poly_correction2, poly_correction1])
+
+
+def _find_calibrator_filename_bases(data_dir, chopping=False):
+    """Find filename bases in data_dir that are calibrators (CAL only)."""
+    data_dir = Path(data_dir)
+    bases = []
+    if chopping:
+        suffix = "_OUT_OUT_Chop.fits"
+    else:
+        suffix = "_OUT_OUT_noChop.fits"
+
+    for path in sorted(data_dir.glob(f"*{suffix}")):
+        try:
+            data = OIFitsReader(path).read()
+        except Exception:
+            continue
+
+        if getattr(data, "category", "CAL") != "CAL":
+            continue
+
+        if getattr(data, "band", "").upper() == "N":
+            continue
+
+        name = path.name
+        if not name.endswith(suffix):
+            continue
+        base = name[: -len(suffix)]
+        if _has_all_bcd_files(data_dir, base):
+            bases.append(base)
+
+    return bases
+
+
+def _has_all_bcd_files(data_dir, filename_base):
+    """Return True if all BCD mode files exist for a given base name."""
+    data_dir = Path(data_dir)
+    all_modes = ["OUT_OUT"] + BCD_MODES_TO_CORRECT
+    for bcd_mode in all_modes:
+        if not (data_dir / f"{filename_base}_{bcd_mode}_noChop.fits").exists():
+            return False
+    return True
 
 
 def _combine_baseline_pairs(data: FloatArray, bcd_mode: str) -> list[FloatArray]:
@@ -315,6 +736,9 @@ def _combine_baseline_pairs(data: FloatArray, bcd_mode: str) -> list[FloatArray]
     pairs = BASELINE_PAIRS[bcd_mode]
     log.info(f"Combining baseline pairs for {bcd_mode}: {pairs}")
 
+    data[data == 0] = (
+        np.nan
+    )  # Replace zeros with NaN to avoid division issues during inversion
     # Combine baselines
     combined_raw = [
         # Baselines 0 and 1 (unchanged, just concatenated)
@@ -485,6 +909,20 @@ def _process_file_pair(
         in_spectral = np.nanmean(in_vis, axis=0)  # (6, n_wav)
         in_spectral_remapped = in_spectral[baseline_map]
 
+        # Count and handle near-zero values to avoid division by zero
+        near_zero_threshold = 1e-10
+        near_zero_mask = np.abs(in_spectral_remapped) < near_zero_threshold
+        n_near_zero = np.count_nonzero(near_zero_mask)
+
+        if n_near_zero > 0:
+            log.warning(
+                f"Found {n_near_zero} near-zero values in spectral data for {bcd_path.name} "
+                f"({100 * n_near_zero / in_spectral_remapped.size:.1f}% of data)"
+            )
+            # Replace near-zero values with NaN to avoid division issues
+            in_spectral_remapped = in_spectral_remapped.copy()
+            in_spectral_remapped[near_zero_mask] = np.nan
+
         correction_spectral = out_spectral / in_spectral_remapped
 
         return (
@@ -537,7 +975,7 @@ def _save_corrections(
 
     # Do not save individual baseline .npy files; rely on CSV
     correction_files: list[Path] = []
-    log.info("Not saving individual baseline .npy files; using CSV output only")
+
     # Save CSV with wl, per-baseline corrections and std columns
     if df is None:
         data: dict[str, FloatArray] = {"wl": np.asarray(wavelengths, dtype=float)}
@@ -549,7 +987,7 @@ def _save_corrections(
 
     csv_file = config.output_dir / f"bcd_{config.bcd_mode}_spectral_corrections.csv"
     df.to_csv(csv_file, index=False)
-    log.info(f"Saved user-readable corrections to {csv_file}")
+    log.info(f"Saved corrections to {str(csv_file.name)}")
 
     # Save polynomial coefficients in separate CSV
     poly_csv_file = None
@@ -624,7 +1062,7 @@ def _save_poly_coefficients(
 
     poly_df = pd.DataFrame(rows)
     poly_df.to_csv(output_path, index=False)
-    log.info(f"Saved polynomial coefficients to {output_path}")
+    log.info(f"Saved polynomial coefficients to {output_path.name}")
 
 
 def _save_summary(
@@ -764,4 +1202,4 @@ def _save_summary(
     with open(output_path, "w") as f:
         f.write("\n".join(summary_lines))
 
-    log.info(f"Saved summary to {output_path}")
+    log.info(f"Saved summary to {output_path.name}")

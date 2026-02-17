@@ -74,3 +74,5 @@ BASELINE_PAIRS: dict[str, list[list[int]]] = {
     "IN_OUT": [[2, 3], [4, 5]],
     "IN_IN": [[2, 5], [3, 4]],
 }
+
+BCD_MODES_TO_CORRECT = ["IN_IN", "IN_OUT", "OUT_IN"]
