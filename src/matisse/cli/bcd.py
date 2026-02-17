@@ -1,4 +1,4 @@
-"""Compute BCD magic numbers from calibrator observations."""
+"""BCD (Beam Commuting Device) sub-commands for magic numbers computation and correction."""
 
 import logging
 from enum import Enum
@@ -19,6 +19,7 @@ from rich.table import Table
 
 from matisse.cli.reduce import Resolution
 from matisse.core.bcd import BCDConfig, compute_bcd_corrections
+from matisse.core.bcd.correction import apply_bcd_corrections
 from matisse.core.bcd.visualization import plot_poly_corrections_results
 from matisse.core.utils.log_utils import console, log
 
@@ -35,7 +36,12 @@ class SpectralBand(str, Enum):
     N = "N"
 
 
-def compute_magic_numbers(
+# Create main BCD command group
+app = typer.Typer(help="BCD (Beam Commuting Device) correction tools")
+
+
+@app.command(name="compute")
+def compute(
     input_dirs: list[Path] | None = typer.Argument(
         None,
         help="One or more directories containing OIFITS files (e.g., /data/2019*/*_OIFITS). Required unless using --results-dir to plot existing results.",
@@ -92,12 +98,12 @@ def compute_magic_numbers(
     ),
     chopping: bool = typer.Option(
         False,
-        "--chopping/--no-chopping",
+        "--chopping",
         help="Use chopping files.",
     ),
     correlated_flux: bool = typer.Option(
         False,
-        "--correlated-flux/--no-correlated-flux",
+        "--correlated-flux",
         help="Filter for correlated flux.",
     ),
     results_dir: Path | None = typer.Option(
@@ -106,8 +112,8 @@ def compute_magic_numbers(
         help="Existing results directory (with CSV files) to plot magic numbers without recomputing.",
     ),
     plot: bool = typer.Option(
-        True,
-        "--plot/--no-plot",
+        False,
+        "--plot",
         help="Generate diagnostic plots.",
     ),
     verbose: bool = typer.Option(
@@ -126,12 +132,9 @@ def compute_magic_numbers(
     the VLTI beams, interchange the peak fringe position, and thus achieve
     better closure-phase correction and improved SNR.
     """
-    # Setup logging
+    # Setup logging level based on verbose flag
     log_level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(
-        level=log_level,
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    )
+    logging.getLogger("matisse").setLevel(log_level)
 
     # Set default output_dir based on prefix if not provided
     if output_dir is None:
@@ -207,6 +210,7 @@ def compute_magic_numbers(
                 TaskProgressColumn(),
                 TimeRemainingColumn(),
                 console=console,
+                transient=True,
             ) as progress:
                 task = progress.add_task(
                     f"[cyan]Computing {current_mode.value} corrections...",
@@ -252,6 +256,65 @@ def compute_magic_numbers(
         raise typer.Exit(code=1) from e
 
 
+@app.command(name="apply")
+def apply(
+    input_dir: Path = typer.Argument(
+        ...,
+        help="Directory containing OIFITS files (e.g., /data/2026*/*_OIFITS).",
+        exists=True,
+    ),
+    corrections_dir: Path = typer.Argument(
+        ...,
+        help="Directory containing BCD correction files.",
+        exists=True,
+    ),
+    chopping: bool = typer.Option(
+        False,
+        "--chopping",
+        help="Use chopped files.",
+    ),
+    merge: bool = typer.Option(
+        False,
+        "--merge",
+        "-m",
+        help="Merge corrected BCD modes into a single OIFITS file (with reordering by BCD mode).",
+    ),
+    plot: bool = typer.Option(
+        False,
+        "--plot",
+        "-p",
+        help="Generate diagnostic plots for the applied corrections.",
+    ),
+    split_chopping: bool = typer.Option(
+        False,
+        "--split-chopping",
+        help="When merging, keep chopped files separate (e.g., _chop1, _chop2) instead of merging them together.",
+    ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show detailed metrics tables for each file (useful for debugging individual corrections).",
+    ),
+) -> None:
+    """
+    Apply computed BCD magic numbers to science observations.
+
+    By default, shows a summary table of all processed files. Use --verbose to see
+    detailed metrics for each file individually.
+    """
+    apply_bcd_corrections(
+        input_dir,
+        corrections_dir,
+        chopping=chopping,
+        merge=merge,
+        verbose=verbose,
+        plot=plot,
+        split_chopping=split_chopping,
+    )
+    raise typer.Exit(code=0)
+
+
 def _plot_existing_or_exit(target_dir: Path, bcd_mode: str, show: bool) -> None:
     """Helper to plot existing CSVs with consistent error handling."""
     try:
@@ -285,7 +348,11 @@ def _display_results(
     if results.get("corrections") is not None:
         aver = results["corrections"]["mean_over_files"]
         std = results["corrections"]["std_over_files"]
-        aver_str = [f"{aver[i]:.2f}±{std[i]:.2f}" for i in range(len(aver))]
+        if len(std[std == 0]) == len(std):
+            aver_str = [f"{aver[i]:.2f}" for i in range(len(aver))]
+        else:
+            aver_str = [f"{aver[i]:.2f}±{std[i]:.2f}" for i in range(len(aver))]
+
         baseline_pairs = results["corrections"]["baseline_pairs"]
         baseline_names = results["corrections"]["baseline_names"]
 
