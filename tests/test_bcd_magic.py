@@ -30,7 +30,8 @@ def test_magic_num_cli_runs_with_real_lamp(
     result = runner.invoke(
         app,
         [
-            "magic",
+            "bcd",
+            "compute",
             str(dataset_dir),
             "--output-dir",
             str(tmp_path),
@@ -133,7 +134,7 @@ def test_validate_file_filters_correlated_flux(monkeypatch):
 def test_magic_num_nofile(tmp_path, caplog):
     runner = CliRunner()
     tmp_path.mkdir(exist_ok=True)
-    result = runner.invoke(app, ["magic", str(tmp_path)])
+    result = runner.invoke(app, ["bcd", "compute", str(tmp_path)])
 
     assert "File not found: No valid file" in caplog.text
     assert result.exit_code == 1
@@ -226,7 +227,14 @@ def test_magic_cli_plots_existing_results(tmp_path, monkeypatch):
     tau0_min_value = 5
     result = runner.invoke(
         app,
-        ["magic", "--results-dir", str(tmp_path), "--tau0-min", str(tau0_min_value)],
+        [
+            "bcd",
+            "compute",
+            "--results-dir",
+            str(tmp_path),
+            "--tau0-min",
+            str(tau0_min_value),
+        ],
     )
 
     assert result.exit_code == 0, result.output
@@ -235,7 +243,7 @@ def test_magic_cli_plots_existing_results(tmp_path, monkeypatch):
 def test_magic_cli_plots_existing_results_missing_csv(tmp_path):
     runner = CliRunner()
 
-    result = runner.invoke(app, ["magic", "--results-dir", str(tmp_path)])
+    result = runner.invoke(app, ["bcd", "compute", "--results-dir", str(tmp_path)])
 
     assert result.exit_code != 0
 
