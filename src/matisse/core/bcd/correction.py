@@ -377,11 +377,28 @@ def apply_bcd_corrections(
 
     dict_all = {}
     for base in bases:
-        dict_all[base] = _apply_bcd_corrections_single(data_dir, corrections_dir, base)
+        try:
+            dict_all[base] = _apply_bcd_corrections_single(
+                data_dir, corrections_dir, base
+            )
+        except FileNotFoundError as e:
+            console.print(
+                f"[red]Error: Missing correction file for {base}[/red]\n"
+                f"  {e}\n"
+                f"[yellow]Skipping this file...please run 'matisse bcd compute' first to generate corrections.[/yellow]"
+            )
+            # log.error(f"Skipping {base}: {e}")
+            continue
 
     chop_status = "noChop"
     if chopping:
         chop_status = "Chop"
+
+    if not dict_all:
+        raise FileNotFoundError(
+            f"Correction files are missing for some calibrator in {corrections_dir}. "
+            f"Please run 'matisse bcd compute' first to generate corrections."
+        )
 
     # Collect summary metrics for all files
     summary_results = []
