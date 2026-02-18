@@ -425,3 +425,318 @@ def test_calibrate_command_mocked(data_dir, tmp_path, monkeypatch):
     # Should succeed
     assert result.exit_code == 0
     assert resultdir.exists()
+
+
+def test_bcd_compute_command(bcd_dir, tmp_path, caplog):
+    """Ensure 'matisse bcd compute' runs on testing data."""
+
+    # Capture all logs at DEBUG level
+    caplog.set_level("DEBUG")
+
+    result = runner.invoke(
+        app,
+        [
+            "bcd",
+            "compute",
+            str(bcd_dir),
+            "--output-dir",
+            str(tmp_path),
+            "--bcd-mode",
+            "IN_IN",
+        ],
+        catch_exceptions=False,
+    )
+
+    # Print output and logs for debugging
+    if result.exit_code != 0:
+        print(f"\n[COMMAND OUTPUT]\n{result.output}")
+        print("\n[CAPTURED LOGS]\n")
+        for record in caplog.records:
+            print(f"  {record.levelname}: {record.message}")
+
+    assert result.exit_code == 0, (
+        f"Command failed with exit code {result.exit_code}:\n{result.output}"
+    )
+    # Check that some correction files were created
+    correction_files = list(tmp_path.glob("*.csv"))
+    n_file = len(correction_files)
+
+    assert n_file == 2, (
+        f"Expected 2 correction files, found {n_file}:\n{correction_files}"
+    )
+
+    # Verify that both CSV files contain "IN_IN" (the BCD mode)
+    for csv_file in correction_files:
+        assert "IN_IN" in csv_file.name, (
+            f"Expected 'IN_IN' in filename: {csv_file.name}"
+        )
+        # Also verify the CSV content contains IN_IN data
+        csv_content = csv_file.read_text()
+        assert len(csv_content) > 0, f"CSV file is empty: {csv_file.name}"
+
+
+@pytest.mark.parametrize("bcd_mode", ["IN_IN", "OUT_IN", "IN_OUT"])
+def test_bcd_compute_multiple_modes(bcd_dir, tmp_path, bcd_mode):
+    """Test BCD compute for multiple BCD modes."""
+
+    result = runner.invoke(
+        app,
+        [
+            "bcd",
+            "compute",
+            str(bcd_dir),
+            "--output-dir",
+            str(tmp_path / bcd_mode),
+            "--bcd-mode",
+            bcd_mode,
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, (
+        f"BCD compute failed for mode {bcd_mode}:\n{result.output}"
+    )
+
+    # Check that correction files were created for this BCD mode
+    output_dir = tmp_path / bcd_mode
+    correction_files = list(output_dir.glob("*.csv"))
+
+    assert len(correction_files) == 2, (
+        f"Expected 2 CSV files for {bcd_mode}, found {len(correction_files)}"
+    )
+
+    # Verify files contain the correct BCD mode
+    for csv_file in correction_files:
+        assert bcd_mode in csv_file.name, (
+            f"Expected '{bcd_mode}' in filename: {csv_file.name}"
+        )
+        csv_content = csv_file.read_text()
+        assert len(csv_content) > 0, f"CSV file is empty: {csv_file.name}"
+
+
+def test_bcd_compute_all(bcd_dir, tmp_path):
+    """Test BCD compute for ALL BCD modes."""
+
+    result = runner.invoke(
+        app,
+        [
+            "bcd",
+            "compute",
+            str(bcd_dir),
+            "--output-dir",
+            str(tmp_path),
+            "--bcd-mode",
+            "ALL",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0, f"BCD compute failed for mode ALL:\n{result.output}"
+
+    # Check that correction files were created for this BCD mode
+    correction_files = list(tmp_path.glob("*.csv"))
+    assert len(correction_files) == 6, (
+        f"Expected 6 CSV files for ALL BCD modes, found {len(correction_files)}"
+    )
+
+
+def test_bcd_apply(bcd_apply_outputs):
+    """Test BCD correction application."""
+    corrections_dir = bcd_apply_outputs["corrections_dir"]
+    corrected_dir = bcd_apply_outputs["corrected_dir"]
+
+    correction_files = list(corrections_dir.glob("*.csv"))
+    assert len(correction_files) == 6, (
+        f"Expected 6 CSV files for ALL BCD modes, found {len(correction_files)}"
+    )
+
+    assert corrected_dir.exists(), (
+        f"Corrected output directory was not created: {corrected_dir}"
+    )
+    corrected_files = list(sorted(corrected_dir.glob("*_bcd_corr.fits")))
+    assert len(corrected_files) == 5, (
+        f"No corrected FITS files were created in {corrected_dir}"
+    )
+
+
+def test_bcd_apply_expected_values(bcd_apply_outputs):
+    """Test BCD correction application."""
+    corrected_dir = bcd_apply_outputs["corrected_dir"]
+    corrected_files = list(sorted(corrected_dir.glob("*_bcd_corr.fits")))
+
+    # Check that the merged file was created and has the expected content
+    merged = corrected_files[4]  # The last file is the merged one
+
+    assert merged.exists(), f"Merged corrected file was not created: {merged}"
+
+    data_merged = OIFitsReader(merged).read()
+
+    # Check that the merged file has the expected number of wavelength points and baselines
+    blname = data_merged.blname
+    vis2 = data_merged.vis2["VIS2"]
+    n_bl = vis2.shape[0]
+
+    assert len(data_merged.wavelength) == 118, (
+        f"Expected 118 wavelength points in merged file, found {len(data_merged.wavelength)}"
+    )
+    assert n_bl == 6, f"Expected 6 baselines in merged file, found {n_bl}"
+
+    # Check that the baseline names are in expected order (OUT-OUT)
+    expected_blname = [
+        "U3-U4",
+        "U1-U2",
+        "U2-U3",
+        "U2-U4",
+        "U1-U3",
+        "U1-U4",
+    ]
+    for i, bl in enumerate(expected_blname):
+        assert blname[i] == bl, (
+            f"Expected baseline {bl} at index {i}, but got {blname[i]}"
+        )
+
+    # Check that the VIS2 values are within expected ranges (based on test data)
+    expected_value = [
+        0.75,  # U3-U4
+        0.70,  # U1-U2
+        0.57,  # U2-U3
+        0.49,  # U2-U4
+        0.42,  # U1-U3
+        0.32,  # U1-U4
+    ]
+    # Mask to select the wavelength range around 3.45 microns
+    # where we expect the values to be close to the expected ones
+    mask = (data_merged.wavelength * 1e6 >= 3.4) & (data_merged.wavelength * 1e6 <= 3.5)
+    for i in range(n_bl):
+        vis2_values = vis2[i][mask].mean()
+        assert vis2_values == pytest.approx(expected_value[i], abs=0.01), (
+            f"Expected {expected_value[i]}, got {vis2_values}"
+        )
+
+
+def test_bcd_apply_verbose(bcd_dir, tmp_path):
+    """Apply bcd corrections with verbose output for testing purposes."""
+    import shutil
+
+    temp_data_dir = tmp_path / "temp_bcd_data"
+    shutil.copytree(bcd_dir, temp_data_dir)
+
+    corrections_dir = tmp_path / "corrections"
+    corrections_dir.mkdir(parents=True, exist_ok=True)
+
+    result_compute = runner.invoke(
+        app,
+        [
+            "bcd",
+            "compute",
+            str(temp_data_dir),
+            "--output-dir",
+            str(corrections_dir),
+            "--bcd-mode",
+            "ALL",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result_compute.exit_code == 0, result_compute.output
+
+    result_apply = runner.invoke(
+        app,
+        [
+            "bcd",
+            "apply",
+            str(temp_data_dir),
+            str(corrections_dir),
+            "--verbose",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result_apply.exit_code == 0, result_apply.output
+
+
+@pytest.fixture(scope="module")
+def bcd_apply_outputs(bcd_dir, tmp_path_factory):
+    """Prepare corrections and corrected directory for BCD tests."""
+    import shutil
+
+    base_dir = tmp_path_factory.mktemp("bcd_apply")
+    temp_data_dir = base_dir / "temp_bcd_data"
+    shutil.copytree(bcd_dir, temp_data_dir)
+
+    corrections_dir = base_dir / "corrections"
+    corrections_dir.mkdir(parents=True, exist_ok=True)
+
+    result_compute = runner.invoke(
+        app,
+        [
+            "bcd",
+            "compute",
+            str(temp_data_dir),
+            "--output-dir",
+            str(corrections_dir),
+            "--bcd-mode",
+            "ALL",
+            "--tau0-min",
+            "5",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result_compute.exit_code == 0, result_compute.output
+
+    result_apply = runner.invoke(
+        app,
+        [
+            "bcd",
+            "apply",
+            str(temp_data_dir),
+            str(corrections_dir),
+            "--merge",
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result_apply.exit_code == 0, result_apply.output
+
+    corrected_dir = temp_data_dir.parent / f"{temp_data_dir.name}_bcd_corr"
+
+    return {
+        "temp_data_dir": temp_data_dir,
+        "corrections_dir": corrections_dir,
+        "corrected_dir": corrected_dir,
+    }
+
+
+def test_bcd_compare_minimal(bcd_apply_outputs):
+    """Minimal test for `matisse bcd compare` figure generation."""
+    import matplotlib.pyplot as plt
+
+    result_compare = runner.invoke(
+        app,
+        [
+            "bcd",
+            "compare",
+            str(bcd_apply_outputs["corrected_dir"]),
+        ],
+        catch_exceptions=False,
+    )
+
+    assert result_compare.exit_code == 0, result_compare.output
+    assert len(plt.get_fignums()) == 1, (
+        f"Expected 1 figure to be generated, but found {len(plt.get_fignums())}"
+    )
+
+
+def test_bcd_compare_cli_no_files(tmp_path):
+    """Test `matisse bcd compare` on empty directory exits with error."""
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+
+    result = runner.invoke(
+        app,
+        ["bcd", "compare", str(empty_dir)],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 1

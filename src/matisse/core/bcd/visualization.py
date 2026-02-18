@@ -1049,7 +1049,13 @@ def plot_bcd_correction(
     fig.subplots_adjust(
         left=0.06, right=0.98, bottom=0.07, top=0.94, hspace=0.0, wspace=0.05
     )
-    plt.show()
+
+    # Only show if using an interactive backend
+    import matplotlib
+
+    if matplotlib.get_backend().lower() not in ("agg", "template"):
+        plt.show()
+
     return fig
 
 

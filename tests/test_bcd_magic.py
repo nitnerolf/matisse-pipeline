@@ -405,3 +405,37 @@ def test_plot_mean_corrections_without_mplcursors(tmp_path, monkeypatch):
     assert "File 2" in labels
 
     plt.close(fig)
+
+
+def test_compute_poly_correction_missing_coef_columns(tmp_path):
+    """Test that missing polynomial coefficient columns raise ValueError."""
+    from matisse.core.bcd.correction import _compute_poly_correction
+
+    wl = np.linspace(3, 5, 50)
+    # DataFrame without coef_x* columns
+    df_bad = pd.DataFrame(
+        {
+            "wl_start_um": [3.2, 4.55],
+            "wl_end_um": [3.8, 4.9],
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="No polynomial coefficient columns found",
+    ):
+        _compute_poly_correction(wl, df_bad, 0)
+
+
+def test_compare_bcd_no_corrected_files(tmp_path):
+    """Test that compare fails gracefully with no corrected files."""
+    from matisse.core.bcd.visualization import compare_bcd_corrections
+
+    empty_dir = tmp_path / "empty_corr"
+    empty_dir.mkdir()
+
+    with pytest.raises(
+        ValueError,
+        match="No BCD-corrected files found",
+    ):
+        compare_bcd_corrections(empty_dir)

@@ -21,6 +21,16 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def close_matplotlib_figures():
+    """Ensure no matplotlib figures leak between tests."""
+    import matplotlib.pyplot as plt
+
+    plt.close("all")
+    yield
+    plt.close("all")
+
+
+@pytest.fixture(autouse=True)
 def cleanup_iter_dirs():
     """
     Automatically remove 'Iter1' to 'Iter4' directories after each test.
@@ -187,6 +197,12 @@ def mock_fig():
 def data_dir() -> Path:
     """Return the path to the test data directory."""
     return Path(__file__).parent / "data"
+
+
+@pytest.fixture(scope="session")
+def bcd_dir() -> Path:
+    """Return the path to the test bcd directory."""
+    return Path(__file__).parent / "data" / "test_dir_bcd"
 
 
 @pytest.fixture(scope="session")
