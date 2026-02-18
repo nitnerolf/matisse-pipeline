@@ -20,7 +20,10 @@ from rich.table import Table
 from matisse.cli.reduce import Resolution
 from matisse.core.bcd import BCDConfig, compute_bcd_corrections
 from matisse.core.bcd.correction import apply_bcd_corrections
-from matisse.core.bcd.visualization import plot_poly_corrections_results
+from matisse.core.bcd.visualization import (
+    compare_bcd_corrections,
+    plot_poly_corrections_results,
+)
 from matisse.core.utils.log_utils import console, log
 
 
@@ -313,6 +316,43 @@ def apply(
         split_chopping=split_chopping,
     )
     raise typer.Exit(code=0)
+
+
+@app.command(name="compare")
+def compare(
+    data_dir: Path = typer.Argument(
+        ...,
+        help="Directory containing BCD-corrected OIFITS files (typically *_bcd_corr/).",
+        exists=True,
+    ),
+    corrections_dir: Path | None = typer.Option(
+        None,
+        "--corrections-dir",
+        help="Directory with correction CSVs (shades calibration windows on plots).",
+        exists=True,
+    ),
+) -> None:
+    """
+    Compare BCD corrections across all modes for each TPL start.
+
+    Auto-detects corrected files in data_dir, groups them by TPL start,
+    and plots V² for all 4 BCD positions. If a merged file is found,
+    it is overlaid in black.
+
+    Example:
+        matisse bcd compare /data/2026-01-15_OIFITS_bcd_corr/
+    """
+    try:
+        compare_bcd_corrections(
+            data_dir=data_dir,
+            corrections_dir=corrections_dir,
+        )
+    except FileNotFoundError as e:
+        console.print(f"[bold red]✗[/bold red] {e}", style="red")
+        raise typer.Exit(code=1) from e
+    except ValueError as e:
+        console.print(f"[bold red]✗[/bold red] {e}", style="red")
+        raise typer.Exit(code=1) from e
 
 
 def _plot_existing_or_exit(target_dir: Path, bcd_mode: str, show: bool) -> None:

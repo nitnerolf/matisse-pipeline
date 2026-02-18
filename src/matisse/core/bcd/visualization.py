@@ -1,6 +1,7 @@
 """Visualization utilities for BCD corrections."""
 
 import logging
+import re
 from pathlib import Path
 
 import matplotlib as mpl
@@ -19,7 +20,7 @@ from .quality_metrics import _RATIO_GOOD, _RATIO_WARN
 # --------------------------------------------------------------------------- #
 BCD_COLORS = {
     "OUT_OUT": "#2c7bb6",
-    "IN_IN": "#d7191c",
+    "IN_IN": "#b964b2",
     "IN_OUT": "#fdae61",
     "OUT_IN": "#abdda4",
 }
@@ -843,6 +844,12 @@ def plot_bcd_correction(
         for _, row in wl_ranges.iterrows():
             band_mask |= (wl >= row["wl_start_um"]) & (wl <= row["wl_end_um"])
 
+    # Fallback: if no calibration windows defined, use default L+M bands
+    if not np.any(band_mask):
+        band_mask |= (wl >= 3.2) & (wl <= 4.0)
+        band_mask |= (wl >= 4.55) & (wl <= 4.9)
+        wl_ranges = pd.DataFrame({"wl_start_um": [3.2, 4.55], "wl_end_um": [4.0, 4.9]})
+
     # --- Pre-compute STD for all baselines to find common y-scale ---
     all_std = []
     for i in range(6):
@@ -856,14 +863,14 @@ def plot_bcd_correction(
         std_bcd[band_mask] = np.std(vis2_all[:, band_mask], axis=0)
         all_std.append(std_bcd)
 
-    std_ylim_candidates = [np.nanmax(s) for s in all_std]
+    std_ylim_candidates = [np.nanmax(s) for s in all_std if np.any(np.isfinite(s))]
     # Also include OUT_OUT VIS2ERR for each baseline
     for i in range(6):
         vis2err = dict_data["OUT_OUT"].vis2["VIS2ERR"][i]
         err_in_band = vis2err[band_mask]
-        if len(err_in_band) > 0:
+        if len(err_in_band) > 0 and np.any(np.isfinite(err_in_band)):
             std_ylim_candidates.append(np.nanmax(err_in_band))
-    std_ylim = np.nanmax(std_ylim_candidates) * 1.15
+    std_ylim = np.nanmax(std_ylim_candidates) * 1.15 if std_ylim_candidates else 0.1
 
     # --- Main plotting loop ---
     for i in range(6):
@@ -911,6 +918,9 @@ def plot_bcd_correction(
             vis2_merged = data_merged.vis2["VIS2"][i]
             vis2err_merged = data_merged.vis2["VIS2ERR"][i]
 
+            std_merged = np.full(len(wl), np.nan)
+            std_merged[band_mask] = vis2err_merged[band_mask]
+
             ax_v2.fill_between(
                 wl,
                 vis2_merged - vis2err_merged,
@@ -928,6 +938,15 @@ def plot_bcd_correction(
                 ls="--",
                 alpha=0.9,
                 zorder=12,
+            )
+            ax_std.plot(
+                wl,
+                std_merged,
+                label=r"$\sigma_{\rm merged}$",
+                color="black",
+                lw=1.0,
+                ls="--",
+                zorder=13,
             )
 
         # Use pre-computed STD
@@ -1032,3 +1051,160 @@ def plot_bcd_correction(
     )
     plt.show()
     return fig
+
+
+# ---------------------------------------------------------------------------
+# Auto-detect and compare BCD corrections from a corrected directory
+# ---------------------------------------------------------------------------
+
+
+def _find_corrected_bases(data_dir: Path) -> list[str]:
+    """Find unique filename bases from BCD-corrected files.
+
+    Scans for ``*_OUT_OUT_*_bcd_corr.fits`` files and extracts the common
+    prefix (everything before ``_OUT_OUT``).
+
+    Returns a sorted list of unique bases.
+    """
+    pattern = re.compile(r"^(.+)_OUT_OUT_(noChop|Chop)_bcd_corr\.fits$")
+    bases: set[str] = set()
+    for path in data_dir.iterdir():
+        m = pattern.match(path.name)
+        if m:
+            bases.add(m.group(1))
+    return sorted(bases)
+
+
+def _find_merged_file(data_dir: Path, filename_base: str) -> Path | None:
+    """Find a merged OIFITS file matching a given base name.
+
+    Merged filenames have BCD modes and chop status stripped,
+    e.g. ``<base>__bcd_corr.fits`` or ``<base>_bcd_corr.fits``.
+    We look for any file that starts with the base, ends with
+    ``_bcd_corr.fits``, and does NOT contain a BCD mode tag.
+    """
+    bcd_tags = {"_OUT_OUT_", "_IN_IN_", "_IN_OUT_", "_OUT_IN_"}
+    for path in sorted(data_dir.iterdir()):
+        name = path.name
+        if not name.endswith(".fits"):
+            continue
+        if not name.startswith(filename_base):
+            continue
+        # Exclude per-BCD-mode corrected files
+        if any(tag in name for tag in bcd_tags):
+            continue
+        return path
+    return None
+
+
+def compare_bcd_corrections(
+    data_dir: Path,
+    corrections_dir: Path | None = None,
+) -> list[plt.Figure]:
+    """Auto-detect corrected BCD files and display comparison plots.
+
+    Scans ``data_dir`` (typically a ``*_bcd_corr/`` directory) for corrected
+    OIFITS files grouped by filename base (one per TPL START).  For each
+    group the 4 BCD modes are loaded and passed to
+    :func:`plot_bcd_correction`.  If a merged file is found it is overlaid.
+
+    Parameters
+    ----------
+    data_dir : Path
+        Directory containing BCD-corrected OIFITS files
+        (``*_bcd_corr.fits``).
+    corrections_dir : Path, optional
+        Directory with correction CSVs (used to shade calibration windows).
+
+    Returns
+    -------
+    figures : list of Figure
+        One figure per TPL START group.
+    """
+    from matisse.core.utils.log_utils import console, log
+    from matisse.core.utils.oifits_reader import OIFitsReader
+
+    data_dir = Path(data_dir)
+    if not data_dir.is_dir():
+        raise FileNotFoundError(f"Directory not found: {data_dir}")
+
+    bases = _find_corrected_bases(data_dir)
+    if not bases:
+        raise ValueError(
+            f"No BCD-corrected files found in {data_dir}. "
+            "Expected files matching *_<BCD>_<Chop>_bcd_corr.fits"
+        )
+
+    console.rule("[bold cyan]BCD Correction Comparison[/bold cyan]")
+    log.info(f"Directory: {data_dir.resolve()}")
+    log.info(f"Found {len(bases)} TPL start group(s)")
+
+    figures: list[plt.Figure] = []
+
+    for base in bases:
+        log.info(f"Processing: {base}")
+
+        # Detect chop status
+        chop_status = "noChop"
+        if (data_dir / f"{base}_OUT_OUT_Chop_bcd_corr.fits").exists():
+            chop_status = "Chop"
+
+        # Load all 4 BCD modes
+        all_modes = ["OUT_OUT"] + BCD_MODES_TO_CORRECT
+        dict_data = {}
+        missing = []
+        for bcd_mode in all_modes:
+            fpath = data_dir / f"{base}_{bcd_mode}_{chop_status}_bcd_corr.fits"
+            if not fpath.exists():
+                missing.append(bcd_mode)
+                continue
+            reader = OIFitsReader(fpath)
+            oifits = reader.read()
+            if oifits is None:
+                missing.append(bcd_mode)
+                continue
+            dict_data[bcd_mode] = oifits
+
+        if missing:
+            log.warning(f"  Missing BCD modes: {', '.join(missing)} — skipping")
+            continue
+
+        if len(dict_data) != 4:
+            log.warning(f"  Only {len(dict_data)}/4 BCD modes loaded — skipping")
+            continue
+
+        # Detect merged file
+        merged_data = None
+        merged_path = _find_merged_file(data_dir, base)
+        if merged_path is not None:
+            log.info(f"  Merged file found: {merged_path.name}")
+            reader = OIFitsReader(merged_path)
+            merged_data = reader.read()
+        else:
+            log.info("  No merged file found")
+
+        # Extract TPL START from header for the title
+        tpl_start = ""
+        try:
+            from astropy.io import fits as _fits
+
+            with _fits.open(
+                data_dir / f"{base}_OUT_OUT_{chop_status}_bcd_corr.fits"
+            ) as hdul:
+                tpl_start = hdul[0].header.get("ESO TPL START", "")
+        except Exception:
+            pass
+
+        title = f"BCD comparison — {base}"
+        if tpl_start:
+            title += f" (TPL {tpl_start})"
+
+        fig = plot_bcd_correction(
+            dict_data,
+            corrections_dir=corrections_dir,
+            title=title,
+            data_merged=merged_data,
+        )
+        figures.append(fig)
+
+    return figures
