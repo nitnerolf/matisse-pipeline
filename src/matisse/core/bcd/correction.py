@@ -327,7 +327,7 @@ def apply_bcd_corrections(
     For each BCD mode (IN_IN, IN_OUT, OUT_IN), load the data and correction
     coefficients, make a deep copy of the data, and apply the correction to the
     affected baselines in storage order (without reordering by BCD). The BCD
-    reordering is only applied later for display and merge.
+    reordering is only applied later for display or merge.
 
     For each pair of swapped baselines (baseline_idx1, baseline_idx2):
       - baseline_idx1 (in display order) → storage index bcd_order[idx1] is
@@ -387,7 +387,6 @@ def apply_bcd_corrections(
                 f"  {e}\n"
                 f"[yellow]Skipping this file...please run 'matisse bcd compute' first to generate corrections.[/yellow]"
             )
-            # log.error(f"Skipping {base}: {e}")
             continue
 
     chop_status = "noChop"
@@ -506,8 +505,6 @@ def apply_bcd_corrections(
                 f"[yellow]Warning: {poor_count}/{len(summary_results)} "
                 f"corrections show POOR quality. Review before merging.[/yellow]"
             )
-
-    return dict_all
 
 
 def _save_corrected_oifits(dict_data, data_dir, filename_base, chopping=False):
@@ -703,9 +700,6 @@ def _find_calibrator_filename_bases(data_dir, chopping=False):
         try:
             data = OIFitsReader(path).read()
         except Exception:
-            continue
-
-        if getattr(data, "category", "CAL") != "CAL":
             continue
 
         if getattr(data, "band", "").upper() == "N":

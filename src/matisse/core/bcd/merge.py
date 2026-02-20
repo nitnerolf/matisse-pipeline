@@ -23,6 +23,7 @@ from numpy.typing import NDArray
 from scipy.stats import circvar
 
 from matisse.core.utils.log_utils import log
+from matisse.core.utils.oifits_reader import OIFitsReader
 
 # ---------------------------------------------------------------------------
 # BCD modes and positions
@@ -767,3 +768,25 @@ def _build_merged_filename(base_name: str, *, separate_chopping: bool) -> str:
     if not separate_chopping:
         name = name.replace("_noChop", "").replace("_Chop", "")
     return name
+
+
+def find_sci_filename(data_dir, chopping=False, band=None):
+    """Find filename bases in data_dir that are science."""
+    data_dir = Path(data_dir)
+
+    if chopping:
+        suffix = "_Chop*.fits"
+    else:
+        suffix = "_noChop*.fits"
+
+    list_scivis = []  # For tracking files of SCIENCE file
+    for path in sorted(data_dir.glob(f"*IR-{band}_*{suffix}")):
+        try:
+            data = OIFitsReader(path).read()
+        except Exception:
+            continue
+
+        if getattr(data, "category", "CAL") != "CAL":
+            list_scivis.append(path)
+
+    return list_scivis

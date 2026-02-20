@@ -1,11 +1,13 @@
 """BCD (Beam Commuting Device) sub-commands for magic numbers computation and correction."""
 
 import logging
+import shutil
 from enum import Enum
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import typer
+from astropy.io import fits
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
@@ -20,6 +22,7 @@ from rich.table import Table
 from matisse.cli.reduce import Resolution
 from matisse.core.bcd import BCDConfig, compute_bcd_corrections
 from matisse.core.bcd.correction import apply_bcd_corrections
+from matisse.core.bcd.merge import find_sci_filename, remove_bcd
 from matisse.core.bcd.visualization import (
     compare_bcd_corrections,
     plot_poly_corrections_results,
@@ -301,7 +304,7 @@ def apply(
     ),
 ) -> None:
     """
-    Apply computed BCD magic numbers to science observations.
+    Apply computed BCD magic numbers to calibrator observations.
 
     By default, shows a summary table of all processed files. Use --verbose to see
     detailed metrics for each file individually.
@@ -318,11 +321,53 @@ def apply(
     raise typer.Exit(code=0)
 
 
+@app.command(name="remove")
+def remove(
+    input_dir: Path = typer.Argument(
+        ...,
+        help="Directory containing OIFITS files (e.g., /data/2026*/*_OIFITS).",
+        exists=True,
+    ),
+    chopping: bool = typer.Option(
+        False,
+        "--chopping",
+        help="Use chopped files.",
+    ),
+    band: SpectralBand = typer.Option(SpectralBand.LM, "--band", help="Spectral band."),
+) -> None:
+    """
+    Remove BCD ordering in SCI OIFITS files from the specified directory. All files
+    will be renamed with the suffix _noBCD and the BCD ordering will follow the OUT_OUT convention.
+    This is required to prepare files for next steps of the pipeline (e.g., calibration with genoca).
+    """
+    list_scivis = find_sci_filename(input_dir, chopping=chopping, band=band.value)
+    log.info(f"List of science files to process: {list_scivis}")
+
+    for file in list_scivis:
+        hdu = fits.open(file)
+        remove_bcd(hdu, save=True)
+        hdu.close()
+
+    list_bcd_removed = sorted(Path(input_dir).glob("*_noBCD.fits"))
+    nobcd_dir = input_dir.parent / f"{input_dir.name}_noBCD"
+    nobcd_dir.mkdir(parents=True, exist_ok=True)
+    for file in list_bcd_removed:
+        target_path = nobcd_dir / file.name
+        file.rename(target_path)
+        log.debug(f"Moved {file.name} to {target_path}")
+
+    for file in list_scivis:
+        if "OUT_OUT" in file.name:
+            target_path = nobcd_dir / file.name
+            shutil.copy2(file, target_path)
+            log.debug(f"Copied {file.name} to {target_path}")
+
+
 @app.command(name="compare")
 def compare(
     data_dir: Path = typer.Argument(
         ...,
-        help="Directory containing BCD-corrected OIFITS files (typically *_bcd_corr/).",
+        help="Directory containing OIFITS files (e.g., /data/2026*/*_OIFITS).",
         exists=True,
     ),
     corrections_dir: Path | None = typer.Option(
