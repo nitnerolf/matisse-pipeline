@@ -321,7 +321,7 @@ def apply_bcd_corrections(
     split_chopping: bool = True,
     plot: bool = True,
     verbose: bool = False,
-) -> dict[str, dict[str, Any]]:
+) -> None:
     """Apply BCD polynomial corrections for all BCD positions.
 
     For each BCD mode (IN_IN, IN_OUT, OUT_IN), load the data and correction
@@ -349,11 +349,6 @@ def apply_bcd_corrections(
         Generate correction plots. Default is True.
     verbose : bool, optional
         Show detailed metrics tables for each file. Default is False.
-
-    Returns
-    -------
-    dict_data : dict
-        Dictionary {filename_base: dict_data} for each calibrator.
     """
 
     bases = _find_calibrator_filename_bases(data_dir, chopping=chopping)
