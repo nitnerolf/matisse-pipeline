@@ -112,7 +112,8 @@ def generate_sof_files(
         # Write SOF file
         with open(sof_path, "w") as f:
             # Calculate relative path from output_dir to input_dir
-            rel_input_dir = os.path.relpath(input_dir, output_dir)
+            # Use resolved paths to handle multi-level relative paths correctly
+            rel_input_dir = os.path.relpath(input_dir.resolve(), output_dir.resolve())
 
             for target in target_list:
                 rel_path = Path(rel_input_dir) / target["path"].name
@@ -152,7 +153,9 @@ def run_esorex_calibration(
     bool
         True if successful, False otherwise.
     """
-    relative_sof = Path("..") / sof_path
+    # The SOF file lives in output_dir; esorex will cd there,
+    # so we only need the filename.
+    sof_filename = sof_path.name
 
     # Build esorex command
     cmd_parts = ["esorex"]
@@ -164,7 +167,7 @@ def run_esorex_calibration(
         [
             "mat_cal_oifits",
             f"--cumulBlock={'TRUE' if cumul_block else 'FALSE'}",
-            str(relative_sof),
+            sof_filename,
         ]
     )
 
@@ -172,7 +175,8 @@ def run_esorex_calibration(
     log_file = output_dir / "calibration.log"
 
     # Redirect output to log file
-    cmd_with_log = f"cd {output_dir} && {cmd} >> {log_file.name} 2>&1"
+    # Use resolved output_dir to avoid issues with multi-level relative paths
+    cmd_with_log = f"cd {output_dir.resolve()} && {cmd} >> {log_file.name} 2>&1"
 
     log.debug(f"Running: {cmd}")
 
