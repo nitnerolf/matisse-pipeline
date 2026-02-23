@@ -197,7 +197,9 @@ def run_esorex_calibration(
         return False
 
 
-def rename_calibrated_outputs(output_dir: Path, base_name: str) -> None:
+def rename_calibrated_outputs(
+    output_dir: Path, base_name: str, added_suffix: str = ""
+) -> None:
     """Rename calibrated FITS files according to MATISSE conventions.
 
     Parameters
@@ -206,6 +208,8 @@ def rename_calibrated_outputs(output_dir: Path, base_name: str) -> None:
         Directory containing output files.
     base_name : str
         Base name extracted from SOF file.
+    added_suffix : str, optional
+        Suffix to append to the base name. Default is empty string.
     """
     # Rename BCD mode files
     for fits_file in output_dir.glob("TARGET_CAL_INT_????.fits"):
@@ -213,11 +217,12 @@ def rename_calibrated_outputs(output_dir: Path, base_name: str) -> None:
             with fits.open(fits_file) as hdul:
                 hdr = hdul[0].header
 
-            bcd_mode = hdr["ESO CFG BCD MODE"]
+            bcd_mode = hdr["ESO CFG BCD MODE"].replace("-", "_")
+
             chop_status = hdr["ESO ISS CHOP ST"]
             suffix = "nochop" if chop_status == "F" else "chop"
 
-            new_name = f"{base_name}_{bcd_mode}_{suffix}.fits"
+            new_name = f"{base_name}_{bcd_mode}_{suffix}{added_suffix}.fits"
             fits_file.rename(output_dir / new_name)
             log.debug(f"Renamed {fits_file.name} → {new_name}")
 

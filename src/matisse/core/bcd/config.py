@@ -69,10 +69,24 @@ BCD_BASELINE_MAP: dict[str, list[int]] = {
     "IN_IN": [0, 1, 5, 4, 3, 2],
 }
 
+BCD_CP_MAP: dict[str, list[int]] = {
+    "OUT_OUT": [0, 1, 2, 3],
+    "OUT_IN": [3, 1, 2, 0],
+    "IN_OUT": [0, 2, 1, 3],
+    "IN_IN": [3, 2, 1, 0],
+}
+
 BASELINE_PAIRS: dict[str, list[list[int]]] = {
     "OUT_IN": [[2, 4], [3, 5]],
     "IN_OUT": [[2, 3], [4, 5]],
     "IN_IN": [[2, 5], [3, 4]],
+}
+
+BCD_CP_SIGN_MAP: dict[str, list[list[int]]] = {
+    "OUT_OUT": [1, 1, 1, 1],  # OUT-OUT (0)
+    "OUT_IN": [1, -1, -1, 1],  # OUT-IN  (1)
+    "IN_OUT": [-1, 1, 1, -1],  # IN-OUT  (2)
+    "IN_IN": [-1, -1, -1, -1],  # IN-IN   (3)
 }
 
 BCD_MODES_TO_CORRECT = ["IN_IN", "IN_OUT", "OUT_IN"]

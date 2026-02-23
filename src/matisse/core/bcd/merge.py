@@ -785,7 +785,6 @@ def find_sci_filename(data_dir, chopping=False, band=None):
             data = OIFitsReader(path).read()
         except Exception:
             continue
-
         if getattr(data, "category", "CAL") != "CAL":
             list_scivis.append(path)
 
