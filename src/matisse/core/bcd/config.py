@@ -82,7 +82,7 @@ BASELINE_PAIRS: dict[str, list[list[int]]] = {
     "IN_IN": [[2, 5], [3, 4]],
 }
 
-BCD_CP_SIGN_MAP: dict[str, list[list[int]]] = {
+BCD_CP_SIGN_MAP: dict[str, list[int]] = {
     "OUT_OUT": [1, 1, 1, 1],  # OUT-OUT (0)
     "OUT_IN": [1, -1, -1, 1],  # OUT-IN  (1)
     "IN_OUT": [-1, 1, 1, -1],  # IN-OUT  (2)
