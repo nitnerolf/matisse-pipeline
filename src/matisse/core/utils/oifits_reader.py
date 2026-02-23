@@ -235,10 +235,17 @@ class OIFitsReader:
             return ""
 
     def _read_category(self, hdr: fits.Header) -> str:
-        """Determine if observation is science (SCI) or calibrator (CAL)."""
+        """Determine if observation is science (SCI) or calibrator (CAL).
+
+        TARGET_RAW_INT and TARGET_CAL_INT are both science targets
+        (before and after calibration respectively). CALIB_RAW_INT
+        denotes a calibrator star.
+        """
         try:
             catg = hdr["ESO PRO CATG"]
-            return "SCI" if catg == "TARGET_RAW_INT" else "CAL"
+            if catg.startswith("TARGET"):
+                return "SCI"
+            return "CAL"
         except KeyError:
             logger.debug(f"Target category not found in {self.file_path}, assuming CAL")
             return "CAL"
