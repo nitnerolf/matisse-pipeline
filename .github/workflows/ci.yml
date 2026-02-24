@@ -3,7 +3,7 @@ on:
   pull_request:
     paths-ignore:
     - docs/**
-    - '**.md'
+    - '**/*.md'
     - LICENSE
   push:
     branches:
@@ -11,7 +11,28 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      non_docs_changed: ${{ steps.changed.outputs.any_changed }}
+
+    steps:
+    - name: Checkout Source
+      uses: actions/checkout@v5
+
+    - name: Detect non-doc changes in last PR push
+      id: changed
+      uses: tj-actions/changed-files@v47
+      with:
+        since_last_remote_commit: true
+        files_ignore: |
+          docs/**
+          **/*.md
+          LICENSE
+
   tests:
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.non_docs_changed == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -58,6 +79,8 @@ jobs:
         verbose: true
 
   type-check:
+    needs: changes
+    if: ${{ github.event_name != 'pull_request' || needs.changes.outputs.non_docs_changed == 'true' }}
     runs-on: ubuntu-latest
     name: type check
 

@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.3.0 (2026-02-24)
+
+### Feat
+
+- add merge command to BCD CLI and enhance find_sci_filename to include CAL files
+- enhance category determination in _read_category method for OIFitsReader
+- add remove command to handle BCD ordering in SCI OIFITS files
+- improve path handling in generate_sof_files and run_esorex_calibration functions
+- add compare command for BCD corrections and update visualization utilities
+- add plot of BCD correction
+- add quality check of the BCD correction
+- add BCD command group for magic numbers computation and correction
+
+### Fix
+
+- update help text for file directories and apply function description in BCD CLI
+- remove unused '--no-chopping' option from BCD CLI test
+- update CLI commands from 'magic' to 'bcd compute' in test cases
+
+### Refactor
+
+- update import statements for Sequence from collections.abc
+
 ## v0.2.0 (2026-02-04)
 
 ### Feat
