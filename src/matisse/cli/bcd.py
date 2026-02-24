@@ -105,7 +105,7 @@ def compute(
     chopping: bool = typer.Option(
         False,
         "--chopping",
-        help="Use chopping files.",
+        help="Use chopped files.",
     ),
     correlated_flux: bool = typer.Option(
         False,
@@ -266,7 +266,7 @@ def compute(
 def apply(
     input_dir: Path = typer.Argument(
         ...,
-        help="Directory containing OIFITS files (e.g., /data/2026*/*_OIFITS).",
+        help="Directory containing OIFITS files (e.g., *_OIFITS/).",
         exists=True,
     ),
     corrections_dir: Path = typer.Argument(
@@ -294,7 +294,7 @@ def apply(
     split_chopping: bool = typer.Option(
         False,
         "--split-chopping",
-        help="When merging, keep chopped files separate (e.g., _chop1, _chop2) instead of merging them together.",
+        help="When merging, keep chopped and unchoppedfiles separate instead of merging them together.",
     ),
     verbose: bool = typer.Option(
         False,
@@ -304,7 +304,7 @@ def apply(
     ),
 ) -> None:
     """
-    Apply computed BCD magic numbers to calibrator observations.
+    Apply stored BCD magic numbers to the observations (only VIS2 are affected).
 
     By default, shows a summary table of all processed files. Use --verbose to see
     detailed metrics for each file individually.
@@ -325,7 +325,7 @@ def apply(
 def remove(
     input_dir: Path = typer.Argument(
         ...,
-        help="Directory containing OIFITS files (e.g., /data/2026*/*_OIFITS).",
+        help="Directory containing OIFITS files (e.g., *_OIFITS/).",
         exists=True,
     ),
     chopping: bool = typer.Option(
@@ -341,9 +341,11 @@ def remove(
     band: SpectralBand = typer.Option(SpectralBand.LM, "--band", help="Spectral band."),
 ) -> None:
     """
-    Remove BCD ordering in SCI OIFITS files from the specified directory. All files
-    will be renamed with the suffix _noBCD and the BCD ordering will follow the OUT_OUT convention.
-    This is required to prepare files for next steps of the pipeline (e.g., calibration with genoca).
+    Remove BCD effects in OIFITS files from the specified directory.
+
+    All files will be renamed with the suffix _noBCD and the BCD ordering will follow
+    the OUT_OUT convention. This is required to prepare files for next steps of the
+    pipeline (e.g., calibration with genoca).
     """
     list_scivis = find_sci_filename(
         input_dir, chopping=chopping, band=band.value, include_cal=cal
@@ -374,7 +376,7 @@ def remove(
 def compare(
     data_dir: Path = typer.Argument(
         ...,
-        help="Directory containing OIFITS files (e.g., /data/2026*/*_OIFITS).",
+        help="Directory containing OIFITS files (e.g., *_OIFITS/).",
         exists=True,
     ),
     corrections_dir: Path | None = typer.Option(
@@ -411,8 +413,13 @@ def compare(
 def merge(
     input_dir: Path = typer.Argument(
         ...,
-        help="Directory containing OIFITS files (e.g., /data/2026*/*_OIFITS).",
+        help="Directory containing OIFITS files (e.g., *_OIFITS/).",
         exists=True,
+    ),
+    combine_chopping: bool = typer.Option(
+        True,
+        "--combine-chopping",
+        help="When merging, combine chopped and unchopped files into one final OIFITS file.",
     ),
 ) -> None:
     """
@@ -424,7 +431,7 @@ def merge(
         str(input_dir),
         save=True,
         output_dir=input_dir,
-        separate_chopping=True,
+        separate_chopping=combine_chopping,
     )
     return None
 

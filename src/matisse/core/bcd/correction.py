@@ -683,7 +683,7 @@ def _compute_poly_correction(
 
 
 def _find_calibrator_filename_bases(data_dir, chopping=False):
-    """Find filename bases in data_dir that are calibrators (CAL only)."""
+    """Find filename bases in data_dir (CAL and SCI)."""
     data_dir = Path(data_dir)
     bases = []
     if chopping:
