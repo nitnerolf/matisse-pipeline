@@ -740,3 +740,57 @@ def test_bcd_compare_cli_no_files(tmp_path):
     )
 
     assert result.exit_code == 1
+
+
+def test_bcd_remove(bcd_dir, tmp_path):
+    """Test `matisse bcd remove` functionality."""
+    import shutil
+    from pathlib import Path
+
+    temp_data_dir = tmp_path / "temp_bcd_data"
+    shutil.copytree(bcd_dir, temp_data_dir)
+
+    result = runner.invoke(
+        app,
+        ["bcd", "remove", str(temp_data_dir), "--cal"],
+        catch_exceptions=True,
+    )
+
+    output_dir = temp_data_dir.parent / f"{temp_data_dir.name}_noBCD/"
+
+    n_original = len(list(bcd_dir.glob("*.fits")))
+    n_removed = len(list(Path(output_dir).glob("*_noBCD.fits")))
+
+    # 4 files in test data, expect 3 to be processed (OUT_OUT is not affected)
+    assert n_removed == n_original - 1, (
+        f"Expected {n_original - 1} files to be processed, but found {n_removed} in output directory."
+    )
+    assert result.exit_code == 0
+
+
+def test_bcd_merge(bcd_dir, tmp_path):
+    """Test `matisse bcd merge` functionality."""
+    import shutil
+
+    temp_data_dir = tmp_path / "temp_bcd_data"
+    shutil.copytree(bcd_dir, temp_data_dir)
+
+    n_original = len(list(temp_data_dir.glob("*.fits")))
+
+    result = runner.invoke(
+        app,
+        ["bcd", "merge", str(temp_data_dir)],
+        catch_exceptions=True,
+    )
+
+    n_processed = len(list(temp_data_dir.glob("*.fits")))
+    n_merge = len(list(temp_data_dir.glob("*LOW_noChop.fits")))
+
+    # 4 files in test data, expect 3 to be processed (OUT_OUT is not affected)
+    assert n_processed == n_original + 1, (
+        f"Expected {n_original + 1} files to be processed, but found {n_processed} in output directory."
+    )
+    assert n_merge == 1, (
+        f"Expected 1 merged file to be created, but found {n_merge} in output directory."
+    )
+    assert result.exit_code == 0
