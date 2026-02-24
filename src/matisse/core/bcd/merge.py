@@ -167,15 +167,15 @@ def merge_oifits(oifits_list: list[str] | list[fits.HDUList]) -> fits.HDUList:
 
     if "OI_VIS2" in extnames:
         merged["OI_VIS2"] = _merge_vis2(data, n_files)
-
     if "OI_VIS" in extnames:
         merged["OI_VIS"] = _merge_vis(data, n_files)
-
     if "OI_T3" in extnames:
         merged["OI_T3"] = _merge_t3(data, n_files)
-
-    if "OI_FLUX" in extnames:
-        merged["OI_FLUX"] = _merge_flux(data, n_files)
+    try:
+        if "OI_FLUX" in extnames:
+            merged["OI_FLUX"] = _merge_flux(data, n_files)
+    except KeyError:
+        log.warning("OI_FLUX extension missing in some files, skipping flux merge")
 
     if "TF2" in extnames:
         merged["TF2"] = _merge_tf2(data, n_files)
@@ -332,7 +332,7 @@ def merge_by_tpl_start(
             + f"N={len(idx_n)}"
         )
 
-        for idx in [idx_lm, idx_lm_chop, idx_lm_nochop, idx_n]:
+        for _, idx in enumerate([idx_lm, idx_lm_chop, idx_lm_nochop, idx_n]):
             if len(idx) == 0:
                 continue
 
@@ -770,7 +770,7 @@ def _build_merged_filename(base_name: str, *, separate_chopping: bool) -> str:
     return name
 
 
-def find_sci_filename(data_dir, chopping=False, band=None):
+def find_sci_filename(data_dir, chopping=False, band=None, include_cal=False):
     """Find filename bases in data_dir that are science."""
     data_dir = Path(data_dir)
 
@@ -785,7 +785,7 @@ def find_sci_filename(data_dir, chopping=False, band=None):
             data = OIFitsReader(path).read()
         except Exception:
             continue
-        if getattr(data, "category", "CAL") != "CAL":
+        if getattr(data, "category", "CAL") != "CAL" or include_cal:
             list_scivis.append(path)
 
     return list_scivis

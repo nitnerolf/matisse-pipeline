@@ -22,7 +22,7 @@ from rich.table import Table
 from matisse.cli.reduce import Resolution
 from matisse.core.bcd import BCDConfig, compute_bcd_corrections
 from matisse.core.bcd.correction import apply_bcd_corrections
-from matisse.core.bcd.merge import find_sci_filename, remove_bcd
+from matisse.core.bcd.merge import find_sci_filename, merge_by_tpl_start, remove_bcd
 from matisse.core.bcd.visualization import (
     compare_bcd_corrections,
     plot_poly_corrections_results,
@@ -333,6 +333,11 @@ def remove(
         "--chopping",
         help="Use chopped files.",
     ),
+    cal: bool = typer.Option(
+        False,
+        "--cal",
+        help="Process CAL files (by default only SCI files are processed).",
+    ),
     band: SpectralBand = typer.Option(SpectralBand.LM, "--band", help="Spectral band."),
 ) -> None:
     """
@@ -340,7 +345,9 @@ def remove(
     will be renamed with the suffix _noBCD and the BCD ordering will follow the OUT_OUT convention.
     This is required to prepare files for next steps of the pipeline (e.g., calibration with genoca).
     """
-    list_scivis = find_sci_filename(input_dir, chopping=chopping, band=band.value)
+    list_scivis = find_sci_filename(
+        input_dir, chopping=chopping, band=band.value, include_cal=cal
+    )
     log.info(f"List of science files to process: {list_scivis}")
 
     for file in list_scivis:
@@ -398,6 +405,28 @@ def compare(
     except ValueError as e:
         console.print(f"[bold red]✗[/bold red] {e}", style="red")
         raise typer.Exit(code=1) from e
+
+
+@app.command(name="merge")
+def merge(
+    input_dir: Path = typer.Argument(
+        ...,
+        help="Directory containing OIFITS files (e.g., /data/2026*/*_OIFITS).",
+        exists=True,
+    ),
+) -> None:
+    """
+    Merge BCD modes into a single OIFITS file with OUT_OUT ordering.
+
+    This is useful for preparing files for next steps of the pipeline (e.g., calibration with genoca).
+    """
+    merge_by_tpl_start(
+        str(input_dir),
+        save=True,
+        output_dir=input_dir,
+        separate_chopping=True,
+    )
+    return None
 
 
 def _plot_existing_or_exit(target_dir: Path, bcd_mode: str, show: bool) -> None:
