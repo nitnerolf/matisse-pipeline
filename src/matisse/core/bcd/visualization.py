@@ -1,17 +1,74 @@
 """Visualization utilities for BCD corrections."""
 
 import logging
+import re
 from pathlib import Path
 
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 from matisse.types import FloatArray
 
-from .config import BCDConfig
+from .config import BCD_BASELINE_MAP, BCD_MODES_TO_CORRECT, BCDConfig
+from .io_utils import load_bcd_corrections
+from .quality_metrics import _RATIO_GOOD, _RATIO_WARN
+
+# --------------------------------------------------------------------------- #
+#  Style configuration for BCD diagnostic plots
+# --------------------------------------------------------------------------- #
+BCD_COLORS = {
+    "OUT_OUT": "#2c7bb6",
+    "IN_IN": "#b964b2",
+    "IN_OUT": "#fdae61",
+    "OUT_IN": "#abdda4",
+}
+BCD_LABELS = {
+    "OUT_OUT": "OUT–OUT",
+    "IN_IN": "IN–IN",
+    "IN_OUT": "IN–OUT",
+    "OUT_IN": "OUT–IN",
+}
+
+_STYLE_APPLIED = False
 
 logger = logging.getLogger(__name__)
+
+
+def _apply_plot_style():
+    """Apply a clean, modern matplotlib style (called once)."""
+    global _STYLE_APPLIED
+    if _STYLE_APPLIED:
+        return
+    mpl.rcParams.update(
+        {
+            "font.family": "sans-serif",
+            "font.size": 11,
+            "axes.titlesize": 12,
+            "axes.titleweight": "bold",
+            "axes.labelsize": 11,
+            "axes.linewidth": 0.8,
+            "axes.grid": True,
+            "grid.alpha": 0.25,
+            "grid.linewidth": 0.5,
+            "xtick.direction": "in",
+            "ytick.direction": "in",
+            "xtick.major.width": 0.8,
+            "ytick.major.width": 0.8,
+            "xtick.minor.visible": True,
+            "ytick.minor.visible": True,
+            "legend.frameon": True,
+            "legend.framealpha": 0.85,
+            "legend.edgecolor": "0.8",
+            "legend.fontsize": 8,
+            "figure.facecolor": "white",
+            "axes.facecolor": "#fafafa",
+            "savefig.dpi": 180,
+            "savefig.bbox": "tight",
+        }
+    )
+    _STYLE_APPLIED = True
 
 
 def plot_corrections(
@@ -724,3 +781,436 @@ def plot_poly_corrections_results(
 
     plt.tight_layout()
     return fig
+
+
+# ---------------------------------------------------------------------------
+# BCD correction diagnostic plots for all baselines and modes
+# ---------------------------------------------------------------------------
+def _ratio_color(ratio):
+    """Return a color string based on the quality ratio."""
+    if ratio <= _RATIO_GOOD:
+        return "#2ca02c"  # green
+    elif ratio <= _RATIO_WARN:
+        return "#ff7f0e"  # orange/yellow
+    else:
+        return "#d62728"  # red
+
+
+def plot_bcd_correction(
+    dict_data, corrections_dir=None, title="BCD comparison", data_merged=None
+):
+    """Plot V2 for all 4 BCD positions on a single figure.
+
+    Each baseline has a top V2 panel and a STD panel below it (std are computed
+    over BCD positions). The STD is computed only inside the L and M band calibration windows.
+
+    Parameters
+    ----------
+    dict_data : dict
+        Dictionary {bcd_mode: data_object} for 4 BCD positions.
+    corrections_dir : Path, optional
+        If provided, shade the wavelength ranges used for correction fitting.
+    title : str
+        Figure title.
+    data_merged : OIFitsData, optional
+        If provided, overlay the merged vis2 in black on the V2 panels.
+    """
+    _apply_plot_style()
+
+    all_modes = ["OUT_OUT"] + BCD_MODES_TO_CORRECT
+    wl = dict_data["OUT_OUT"].wavelength * 1e6
+
+    # Pre-load wavelength ranges (only once)
+    wl_ranges = None
+    if corrections_dir is not None:
+        df0 = load_bcd_corrections(corrections_dir, BCD_MODES_TO_CORRECT[0])
+        wl_ranges = df0[["wl_start_um", "wl_end_um"]].drop_duplicates()
+
+    # Build a gridspec: 2 rows of baselines x 3 columns,
+    # each column has a V2 panel (height_ratio=3) + STD panel (height_ratio=1)
+    fig = plt.figure(figsize=(13, 6.5))
+    gs = fig.add_gridspec(
+        nrows=4,
+        ncols=3,
+        height_ratios=[3, 1, 3, 1],
+        hspace=0.0,
+        wspace=0.05,
+    )
+    fig.suptitle(title, fontsize=13, fontweight="bold")
+
+    # Build the combined band mask for STD computation
+    band_mask = np.zeros(len(wl), dtype=bool)
+    if wl_ranges is not None:
+        for _, row in wl_ranges.iterrows():
+            band_mask |= (wl >= row["wl_start_um"]) & (wl <= row["wl_end_um"])
+
+    # Fallback: if no calibration windows defined, use default L+M bands
+    if not np.any(band_mask):
+        band_mask |= (wl >= 3.2) & (wl <= 4.0)
+        band_mask |= (wl >= 4.55) & (wl <= 4.9)
+        wl_ranges = pd.DataFrame({"wl_start_um": [3.2, 4.55], "wl_end_um": [4.0, 4.9]})
+
+    # --- Pre-compute STD for all baselines to find common y-scale ---
+    all_std = []
+    for i in range(6):
+        vis2_stack = []
+        for bcd_mode in all_modes:
+            data = dict_data[bcd_mode]
+            bcd_order = BCD_BASELINE_MAP[bcd_mode]
+            vis2_stack.append(data.vis2["VIS2"][bcd_order][i])
+        vis2_all = np.array(vis2_stack)
+        std_bcd = np.full(len(wl), np.nan)
+        std_bcd[band_mask] = np.std(vis2_all[:, band_mask], axis=0)
+        all_std.append(std_bcd)
+
+    std_ylim_candidates = [np.nanmax(s) for s in all_std if np.any(np.isfinite(s))]
+    # Also include OUT_OUT VIS2ERR for each baseline
+    for i in range(6):
+        vis2err = dict_data["OUT_OUT"].vis2["VIS2ERR"][i]
+        err_in_band = vis2err[band_mask]
+        if len(err_in_band) > 0 and np.any(np.isfinite(err_in_band)):
+            std_ylim_candidates.append(np.nanmax(err_in_band))
+    std_ylim = np.nanmax(std_ylim_candidates) * 1.15 if std_ylim_candidates else 0.1
+
+    # --- Main plotting loop ---
+    for i in range(6):
+        row_block = i // 3  # 0 or 1
+        col = i % 3
+        ax_v2 = fig.add_subplot(gs[row_block * 2, col])
+        ax_std = fig.add_subplot(gs[row_block * 2 + 1, col], sharex=ax_v2)
+
+        # Collect vis2 from all BCD modes for STD computation
+        vis2_stack = []
+
+        # Shade calibration windows on both panels
+        if wl_ranges is not None:
+            for _, row in wl_ranges.iterrows():
+                for ax in (ax_v2, ax_std):
+                    ax.axvspan(
+                        row["wl_start_um"],
+                        row["wl_end_um"],
+                        alpha=0.10,
+                        color="#b0b0b0",
+                        zorder=0,
+                    )
+
+        # Plot each BCD mode
+        for bcd_mode in all_modes:
+            data = dict_data[bcd_mode]
+            bcd_order = BCD_BASELINE_MAP[bcd_mode]
+
+            vis2_display = data.vis2["VIS2"][bcd_order][i]
+            vis2_stack.append(vis2_display)
+
+            is_ref = bcd_mode == "OUT_OUT"
+            ax_v2.plot(
+                wl,
+                vis2_display,
+                label=BCD_LABELS[bcd_mode],
+                color=BCD_COLORS[bcd_mode],
+                lw=2.0,
+                alpha=1.0,
+                zorder=10 if is_ref else 5,
+            )
+
+        # Overlay merged data if provided
+        if data_merged is not None:
+            vis2_merged = data_merged.vis2["VIS2"][i]
+            vis2err_merged = data_merged.vis2["VIS2ERR"][i]
+
+            std_merged = np.full(len(wl), np.nan)
+            std_merged[band_mask] = vis2err_merged[band_mask]
+
+            ax_v2.fill_between(
+                wl,
+                vis2_merged - vis2err_merged,
+                vis2_merged + vis2err_merged,
+                color="black",
+                alpha=0.1,
+                zorder=11,
+            )
+            ax_v2.plot(
+                wl,
+                vis2_merged,
+                label="Merged",
+                color="black",
+                lw=1.5,
+                ls="--",
+                alpha=0.9,
+                zorder=12,
+            )
+            ax_std.plot(
+                wl,
+                std_merged,
+                label=r"$\sigma_{\rm merged}$",
+                color="black",
+                lw=1.0,
+                ls="--",
+                zorder=13,
+            )
+
+        # Use pre-computed STD
+        std_bcd = all_std[i]
+
+        ax_std.fill_between(
+            wl,
+            0,
+            std_bcd,
+            color="#888888",
+            alpha=0.35,
+            zorder=2,
+        )
+        ax_std.plot(
+            wl, std_bcd, color="#444444", lw=1.0, zorder=3, label=r"$\sigma_{\rm BCD}$"
+        )
+
+        # Plot OUT_OUT V2 error as reference
+        vis2err_outout = dict_data["OUT_OUT"].vis2["VIS2ERR"][i]
+        err_plot = np.full(len(wl), np.nan)
+        err_plot[band_mask] = vis2err_outout[band_mask]
+        ax_std.plot(
+            wl,
+            err_plot,
+            color=BCD_COLORS["OUT_OUT"],
+            lw=1.0,
+            ls="--",
+            zorder=4,
+            label=r"$\sigma_{\rm ref}$",
+        )
+
+        # Compute and display mean ratio σ_BCD / σ_ref in-band
+        mean_std = np.nanmean(std_bcd[band_mask])
+        mean_err = np.nanmean(vis2err_outout[band_mask])
+        if mean_err > 0:
+            ratio_val = mean_std / mean_err
+            ratio_text = rf"$\sigma_{{\rm BCD}}/\sigma_{{\rm ref}}$={ratio_val:.2f}"
+            ratio_col = _ratio_color(ratio_val)
+        else:
+            ratio_text = ""
+            ratio_col = "#888888"
+        ax_std.text(
+            0.97,
+            0.90,
+            ratio_text,
+            transform=ax_std.transAxes,
+            fontsize=7,
+            va="top",
+            ha="right",
+            color=ratio_col,
+            fontweight="bold",
+            bbox=dict(
+                boxstyle="round,pad=0.15", fc="white", ec=ratio_col, alpha=0.85, lw=1.2
+            ),
+            zorder=15,
+        )
+
+        if i == 0:
+            leg = ax_std.legend(loc="upper left", fontsize=8)
+            leg.set_zorder(20)
+
+        # --- V2 panel formatting ---
+        ref_blname = dict_data["OUT_OUT"].blname[i]
+        ax_v2.text(
+            0.97,
+            0.95,
+            ref_blname,
+            transform=ax_v2.transAxes,
+            fontsize=9,
+            fontweight="bold",
+            va="top",
+            ha="right",
+            bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="0.8", alpha=0.85),
+            zorder=15,
+        )
+        ax_v2.set_ylim(0, 1.15)
+        plt.setp(ax_v2.get_xticklabels(), visible=False)
+        ax_v2.tick_params(axis="both", labelsize=8)
+        if col == 0:
+            ax_v2.set_ylabel(r"$V^2$", fontsize=9)
+        else:
+            ax_v2.tick_params(axis="y", labelleft=False)
+
+        if i == 0:
+            leg = ax_v2.legend(loc="best", fontsize=7, handlelength=1.2)
+            leg.set_zorder(20)
+
+        # --- STD panel formatting (common scale) ---
+        ax_std.set_ylim(0, std_ylim)
+        ax_std.tick_params(axis="both", labelsize=8)
+        if row_block == 1:
+            ax_std.set_xlabel(r"$\lambda$ [$\mu$m]", fontsize=9)
+        else:
+            plt.setp(ax_std.get_xticklabels(), visible=False)
+        if col == 0:
+            ax_std.set_ylabel(r"$\sigma_{V^2}$", fontsize=9)
+        else:
+            ax_std.tick_params(axis="y", labelleft=False)
+
+    fig.subplots_adjust(
+        left=0.06, right=0.98, bottom=0.07, top=0.94, hspace=0.0, wspace=0.05
+    )
+
+    # Only show if using an interactive backend
+    import matplotlib
+
+    if matplotlib.get_backend().lower() not in ("agg", "template"):
+        plt.show()
+
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Auto-detect and compare BCD corrections from a corrected directory
+# ---------------------------------------------------------------------------
+
+
+def _find_corrected_bases(data_dir: Path) -> list[str]:
+    """Find unique filename bases from BCD-corrected files.
+
+    Scans for ``*_OUT_OUT_*_bcd_corr.fits`` files and extracts the common
+    prefix (everything before ``_OUT_OUT``).
+
+    Returns a sorted list of unique bases.
+    """
+    pattern = re.compile(r"^(.+)_OUT_OUT_(noChop|Chop)_bcd_corr\.fits$")
+    bases: set[str] = set()
+    for path in data_dir.iterdir():
+        m = pattern.match(path.name)
+        if m:
+            bases.add(m.group(1))
+    return sorted(bases)
+
+
+def _find_merged_file(data_dir: Path, filename_base: str) -> Path | None:
+    """Find a merged OIFITS file matching a given base name.
+
+    Merged filenames have BCD modes and chop status stripped,
+    e.g. ``<base>__bcd_corr.fits`` or ``<base>_bcd_corr.fits``.
+    We look for any file that starts with the base, ends with
+    ``_bcd_corr.fits``, and does NOT contain a BCD mode tag.
+    """
+    bcd_tags = {"_OUT_OUT_", "_IN_IN_", "_IN_OUT_", "_OUT_IN_"}
+    for path in sorted(data_dir.iterdir()):
+        name = path.name
+        if not name.endswith(".fits"):
+            continue
+        if not name.startswith(filename_base):
+            continue
+        # Exclude per-BCD-mode corrected files
+        if any(tag in name for tag in bcd_tags):
+            continue
+        return path
+    return None
+
+
+def compare_bcd_corrections(
+    data_dir: Path,
+    corrections_dir: Path | None = None,
+) -> list[plt.Figure]:
+    """Auto-detect corrected BCD files and display comparison plots.
+
+    Scans ``data_dir`` (typically a ``*_bcd_corr/`` directory) for corrected
+    OIFITS files grouped by filename base (one per TPL START).  For each
+    group the 4 BCD modes are loaded and passed to
+    :func:`plot_bcd_correction`.  If a merged file is found it is overlaid.
+
+    Parameters
+    ----------
+    data_dir : Path
+        Directory containing BCD-corrected OIFITS files
+        (``*_bcd_corr.fits``).
+    corrections_dir : Path, optional
+        Directory with correction CSVs (used to shade calibration windows).
+
+    Returns
+    -------
+    figures : list of Figure
+        One figure per TPL START group.
+    """
+    from matisse.core.utils.log_utils import console, log
+    from matisse.core.utils.oifits_reader import OIFitsReader
+
+    data_dir = Path(data_dir)
+    if not data_dir.is_dir():
+        raise FileNotFoundError(f"Directory not found: {data_dir}")
+
+    bases = _find_corrected_bases(data_dir)
+    if not bases:
+        raise ValueError(
+            f"No BCD-corrected files found in {data_dir}. "
+            "Expected files matching *_<BCD>_<Chop>_bcd_corr.fits"
+        )
+
+    console.rule("[bold cyan]BCD Correction Comparison[/bold cyan]")
+    log.info(f"Directory: {data_dir.resolve()}")
+    log.info(f"Found {len(bases)} TPL start group(s)")
+
+    figures: list[plt.Figure] = []
+
+    for base in bases:
+        log.info(f"Processing: {base}")
+
+        # Detect chop status
+        chop_status = "noChop"
+        if (data_dir / f"{base}_OUT_OUT_Chop_bcd_corr.fits").exists():
+            chop_status = "Chop"
+
+        # Load all 4 BCD modes
+        all_modes = ["OUT_OUT"] + BCD_MODES_TO_CORRECT
+        dict_data = {}
+        missing = []
+        for bcd_mode in all_modes:
+            fpath = data_dir / f"{base}_{bcd_mode}_{chop_status}_bcd_corr.fits"
+            if not fpath.exists():
+                missing.append(bcd_mode)
+                continue
+            reader = OIFitsReader(fpath)
+            oifits = reader.read()
+            if oifits is None:
+                missing.append(bcd_mode)
+                continue
+            dict_data[bcd_mode] = oifits
+
+        if missing:
+            log.warning(f"  Missing BCD modes: {', '.join(missing)} — skipping")
+            continue
+
+        if len(dict_data) != 4:
+            log.warning(f"  Only {len(dict_data)}/4 BCD modes loaded — skipping")
+            continue
+
+        # Detect merged file
+        merged_data = None
+        merged_path = _find_merged_file(data_dir, base)
+        if merged_path is not None:
+            log.info(f"  Merged file found: {merged_path.name}")
+            reader = OIFitsReader(merged_path)
+            merged_data = reader.read()
+        else:
+            log.info("  No merged file found")
+
+        # Extract TPL START from header for the title
+        tpl_start = ""
+        try:
+            from astropy.io import fits as _fits
+
+            with _fits.open(
+                data_dir / f"{base}_OUT_OUT_{chop_status}_bcd_corr.fits"
+            ) as hdul:
+                tpl_start = hdul[0].header.get("ESO TPL START", "")
+        except Exception:
+            pass
+
+        title = f"BCD comparison — {base}"
+        if tpl_start:
+            title += f" (TPL {tpl_start})"
+
+        fig = plot_bcd_correction(
+            dict_data,
+            corrections_dir=corrections_dir,
+            title=title,
+            data_merged=merged_data,
+        )
+        figures.append(fig)
+
+    return figures

@@ -30,12 +30,12 @@ def test_magic_num_cli_runs_with_real_lamp(
     result = runner.invoke(
         app,
         [
-            "magic",
+            "bcd",
+            "compute",
             str(dataset_dir),
             "--output-dir",
             str(tmp_path),
             "--plot",
-            "--no-chopping",
             "--prefix",
             "TESTMN",
         ],
@@ -133,7 +133,7 @@ def test_validate_file_filters_correlated_flux(monkeypatch):
 def test_magic_num_nofile(tmp_path, caplog):
     runner = CliRunner()
     tmp_path.mkdir(exist_ok=True)
-    result = runner.invoke(app, ["magic", str(tmp_path)])
+    result = runner.invoke(app, ["bcd", "compute", str(tmp_path)])
 
     assert "File not found: No valid file" in caplog.text
     assert result.exit_code == 1
@@ -226,7 +226,14 @@ def test_magic_cli_plots_existing_results(tmp_path, monkeypatch):
     tau0_min_value = 5
     result = runner.invoke(
         app,
-        ["magic", "--results-dir", str(tmp_path), "--tau0-min", str(tau0_min_value)],
+        [
+            "bcd",
+            "compute",
+            "--results-dir",
+            str(tmp_path),
+            "--tau0-min",
+            str(tau0_min_value),
+        ],
     )
 
     assert result.exit_code == 0, result.output
@@ -235,7 +242,7 @@ def test_magic_cli_plots_existing_results(tmp_path, monkeypatch):
 def test_magic_cli_plots_existing_results_missing_csv(tmp_path):
     runner = CliRunner()
 
-    result = runner.invoke(app, ["magic", "--results-dir", str(tmp_path)])
+    result = runner.invoke(app, ["bcd", "compute", "--results-dir", str(tmp_path)])
 
     assert result.exit_code != 0
 
@@ -398,3 +405,37 @@ def test_plot_mean_corrections_without_mplcursors(tmp_path, monkeypatch):
     assert "File 2" in labels
 
     plt.close(fig)
+
+
+def test_compute_poly_correction_missing_coef_columns(tmp_path):
+    """Test that missing polynomial coefficient columns raise ValueError."""
+    from matisse.core.bcd.correction import _compute_poly_correction
+
+    wl = np.linspace(3, 5, 50)
+    # DataFrame without coef_x* columns
+    df_bad = pd.DataFrame(
+        {
+            "wl_start_um": [3.2, 4.55],
+            "wl_end_um": [3.8, 4.9],
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="No polynomial coefficient columns found",
+    ):
+        _compute_poly_correction(wl, df_bad, 0)
+
+
+def test_compare_bcd_no_corrected_files(tmp_path):
+    """Test that compare fails gracefully with no corrected files."""
+    from matisse.core.bcd.visualization import compare_bcd_corrections
+
+    empty_dir = tmp_path / "empty_corr"
+    empty_dir.mkdir()
+
+    with pytest.raises(
+        ValueError,
+        match="No BCD-corrected files found",
+    ):
+        compare_bcd_corrections(empty_dir)

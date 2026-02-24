@@ -88,6 +88,7 @@ def run_calibration(
             rename_calibrated_outputs(
                 output_dir=output_dir,
                 base_name=base_name,
+                added_suffix="_calibrated",
             )
 
         # Cleanup intermediate calibration files

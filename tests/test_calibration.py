@@ -72,7 +72,7 @@ def test_run_calibration_pipeline(data_dir, tmp_path, skip_without_esorex):
 
     n_file_expected = 4  # Based on test data setup
     n_oifits_expected = 1  # Based on test data setup
-    expected_bcd_mode = "OUT-OUT"
+    expected_bcd_mode = "OUT_OUT"
     list_oifits = list(resultdir.glob("*.fits"))
     data_to_be_check = OIFitsReader(list_oifits[0]).read()
 
@@ -99,7 +99,7 @@ def test_run_calibration_pipeline_cumul(data_dir, tmp_path, skip_without_esorex)
 
     n_file_expected = 5  # Based on test data setup
     n_oifits_expected = 2  # Based on test data setup
-    expected_bcd_mode = "OUT-OUT"
+    expected_bcd_mode = "OUT_OUT"
 
     # Get list of generated OIFITS files
     list_oifits = list(resultdir.glob("*.fits"))

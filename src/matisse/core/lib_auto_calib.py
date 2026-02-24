@@ -112,7 +112,8 @@ def generate_sof_files(
         # Write SOF file
         with open(sof_path, "w") as f:
             # Calculate relative path from output_dir to input_dir
-            rel_input_dir = os.path.relpath(input_dir, output_dir)
+            # Use resolved paths to handle multi-level relative paths correctly
+            rel_input_dir = os.path.relpath(input_dir.resolve(), output_dir.resolve())
 
             for target in target_list:
                 rel_path = Path(rel_input_dir) / target["path"].name
@@ -152,7 +153,9 @@ def run_esorex_calibration(
     bool
         True if successful, False otherwise.
     """
-    relative_sof = Path("..") / sof_path
+    # The SOF file lives in output_dir; esorex will cd there,
+    # so we only need the filename.
+    sof_filename = sof_path.name
 
     # Build esorex command
     cmd_parts = ["esorex"]
@@ -164,7 +167,7 @@ def run_esorex_calibration(
         [
             "mat_cal_oifits",
             f"--cumulBlock={'TRUE' if cumul_block else 'FALSE'}",
-            str(relative_sof),
+            sof_filename,
         ]
     )
 
@@ -172,7 +175,8 @@ def run_esorex_calibration(
     log_file = output_dir / "calibration.log"
 
     # Redirect output to log file
-    cmd_with_log = f"cd {output_dir} && {cmd} >> {log_file.name} 2>&1"
+    # Use resolved output_dir to avoid issues with multi-level relative paths
+    cmd_with_log = f"cd {output_dir.resolve()} && {cmd} >> {log_file.name} 2>&1"
 
     log.debug(f"Running: {cmd}")
 
@@ -193,7 +197,9 @@ def run_esorex_calibration(
         return False
 
 
-def rename_calibrated_outputs(output_dir: Path, base_name: str) -> None:
+def rename_calibrated_outputs(
+    output_dir: Path, base_name: str, added_suffix: str = ""
+) -> None:
     """Rename calibrated FITS files according to MATISSE conventions.
 
     Parameters
@@ -202,6 +208,8 @@ def rename_calibrated_outputs(output_dir: Path, base_name: str) -> None:
         Directory containing output files.
     base_name : str
         Base name extracted from SOF file.
+    added_suffix : str, optional
+        Suffix to append to the base name. Default is empty string.
     """
     # Rename BCD mode files
     for fits_file in output_dir.glob("TARGET_CAL_INT_????.fits"):
@@ -209,11 +217,12 @@ def rename_calibrated_outputs(output_dir: Path, base_name: str) -> None:
             with fits.open(fits_file) as hdul:
                 hdr = hdul[0].header
 
-            bcd_mode = hdr["ESO CFG BCD MODE"]
+            bcd_mode = hdr["ESO CFG BCD MODE"].replace("-", "_")
+
             chop_status = hdr["ESO ISS CHOP ST"]
             suffix = "nochop" if chop_status == "F" else "chop"
 
-            new_name = f"{base_name}_{bcd_mode}_{suffix}.fits"
+            new_name = f"{base_name}_{bcd_mode}_{suffix}{added_suffix}.fits"
             fits_file.rename(output_dir / new_name)
             log.debug(f"Renamed {fits_file.name} → {new_name}")
 

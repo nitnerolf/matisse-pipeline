@@ -1,4 +1,5 @@
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 import matplotlib.colors as mcolors
 import numpy as np
@@ -943,7 +944,6 @@ def plot_obs_groups(
         fig.update_yaxes(
             range=obs_range, title=title if b_idx == 2 else "", row=row, col=col
         )
-        print(wavelength[valid])
         wl_range = [wavelength.min(), wavelength.max()]
         fig.update_xaxes(
             title="Wavelength (µm)" if row == 8 else "",
