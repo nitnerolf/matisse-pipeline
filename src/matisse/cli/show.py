@@ -20,11 +20,28 @@ def show(
         "--save",
         help="Output filename (.png or .pdf)",
     ),
+    interactive: bool = typer.Option(
+        False,
+        "--interactive",
+        "-i",
+        help="Build a multi-BCD interactive figure from all files sharing the same TPL START.",
+    ),
 ):
     """
     Display MATISSE OIFITS data.
+
+    Use --interactive to generate figure with buttons to switch
+    between BCD positions (IN_IN, OUT_OUT, …) and available bands (LM, N)
+    for all files that share the same TPL START.
     """
     typer.echo("🔭 Launching MATISSE OIFITS viewer...")
+
+    if interactive:
+        typer.echo("🔀 Building multi-BCD figure (searching for BCD modes)...")
+        fig = viewer_plotly.make_multi_bcd_plot(file)
+        post_script = getattr(fig, "_matisse_post_script", "")
+        viewer_plotly.show_plot(fig, post_script=post_script)
+        return
 
     data = open_oifits(file)
 

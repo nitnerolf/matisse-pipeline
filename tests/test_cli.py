@@ -221,6 +221,73 @@ def test_show_cli_opens_viewer(monkeypatch, real_oifits):
     assert all(len(getattr(trace, "x", [])) for trace in closure_traces)
 
 
+def test_show_cli_interactive(monkeypatch, viewer_dir):
+    list_file_bcd = list(viewer_dir.glob("*.fits"))
+
+    captured = {}
+
+    def fake_show(fig, filename="matisse_view.html", auto_open=True, post_script=""):
+        captured["fig"] = fig
+        captured["post_script"] = post_script
+        return fig
+
+    monkeypatch.setattr(show_module.viewer_plotly, "show_plot", fake_show)
+
+    result = runner.invoke(
+        app, ["show", str(list_file_bcd[0]), "--interactive"], catch_exceptions=False
+    )
+
+    assert result.exit_code == 0
+    assert "fig" in captured
+    assert "post_script" in captured
+    post_script = captured["post_script"]
+    assert post_script, "Expected interactive post_script to be injected"
+    # UI now uses HTML <select> controls (single-band: BCD only; multi-band: band + BCD)
+    assert "document.createElement('select')" in post_script
+    assert ("BCD : " in post_script) and ("Band : " in post_script)
+
+
+def test_show_cli_single_band_interactive(monkeypatch, viewer_dir, tmp_path):
+    """
+    Test the interactive mode of the `show` CLI command for single-band cases.
+    Ensure only BCD files are present by removing IR-N files temporarily.
+    """
+    import shutil
+
+    # Copy viewer_dir to a temporary path
+    shutil.copytree(viewer_dir, tmp_path, dirs_exist_ok=True)  # py>=3.8
+
+    # Remove all IR-N files to simulate a single-band scenario
+    for f in tmp_path.rglob("*_IR-N*"):
+        if f.is_file():
+            f.unlink()
+
+    # Collect remaining BCD files
+    list_file_bcd = list(tmp_path.rglob("*.fits"))
+
+    captured = {}
+
+    def fake_show(fig, filename="matisse_view.html", auto_open=True, post_script=""):
+        captured["fig"] = fig
+        captured["post_script"] = post_script
+        return fig
+
+    monkeypatch.setattr(show_module.viewer_plotly, "show_plot", fake_show)
+
+    result = runner.invoke(
+        app, ["show", str(list_file_bcd[0]), "--interactive"], catch_exceptions=False
+    )
+
+    assert result.exit_code == 0
+    assert "fig" in captured
+    assert "post_script" in captured
+    post_script = captured["post_script"]
+    assert post_script, "Expected interactive post_script to be injected"
+    # UI now uses HTML <select> controls (single-band: BCD only; multi-band: band + BCD)
+    assert "document.createElement('select')" in post_script
+    assert ("BCD : " in post_script) and ("Band : " not in post_script)
+
+
 def test_show_cli_save_option(monkeypatch, real_oifits, tmp_path):
     calls = {"saved": None, "show": False}
     monkeypatch.setattr(

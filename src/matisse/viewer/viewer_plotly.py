@@ -1,4 +1,6 @@
+import logging
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import matplotlib.colors as mcolors
@@ -8,6 +10,8 @@ import plotly.graph_objects as go
 import plotly.io as pio
 from astropy import units as u
 from plotly.subplots import make_subplots
+
+logger = logging.getLogger(__name__)
 
 sta_name_list = np.array(
     [
@@ -293,36 +297,52 @@ def mix_colors_for_closure(baseline_colors, baselines, closures):
     return [closure_colors[x] for x in closure_colors]
 
 
-def add_photometric_bands(fig, ymin, ymax, row, col):
+def add_photometric_bands(fig, xaxis_id: str = "x2", yaxis_id: str = "y2") -> None:
     """
-    Add a vertical shaded band (like axvspan) as a trace, not a layout shape.
+    Shade the standard near/mid-IR photometric bands on a spectrum subplot
+    using ``add_vrect`` (layout shapes, not traces).
+
+    Using shapes avoids inflating ``fig.data`` and prevents interference with
+    the multi-BCD trace-visibility toggling.
+
+    Parameters
+    ----------
+    xaxis_id, yaxis_id : str
+        Plotly axis IDs for the target subplot, e.g. ``"x2"`` / ``"y2"``.
+        Pass the axis *ID* directly (not the anchor value returned by
+        ``fig.get_subplot``) so that Plotly's ``_subplot_not_empty`` guard —
+        which crashes on mixed table/xy subplot grids — is bypassed entirely.
     """
+    bands = [
+        (3.2, 4.1, "#DAE5EB", "L"),
+        (4.5, 5.0, "#DAE5EB", "M"),
+        (8.0, 13.0, "#DAE5EB", "N"),
+    ]
 
-    bands = {
-        "L-band": (3.2, 4.1, "#DAE5EB"),
-        "M-band": (4.5, 5.0, "#DAE5EB"),
-        "N-band": (8.0, 13.0, "#DAE5EB"),
-    }
-
-    for name, (x0, x1, color) in bands.items():
-        fig.add_trace(
-            go.Scatter(
-                x=[x0, x1, x1, x0, x0],
-                y=[ymin, ymin, ymax, ymax, ymin],
-                fill="toself",
-                fillcolor=color,
-                mode="none",
-                line=dict(width=0),
-                hoverinfo="skip",
-                name=name or "",
-                showlegend=False,
-                opacity=0.3,
-            ),
-            row=row,
-            col=col,
+    for x0, x1, color, label in bands:
+        fig.add_shape(
+            type="rect",
+            x0=x0,
+            x1=x1,
+            y0=0,
+            y1=1,
+            fillcolor=color,
+            opacity=0.05,
+            layer="below",
+            line_width=0,
+            xref=xaxis_id,
+            yref=f"{yaxis_id} domain",
         )
-
-    return fig
+        fig.add_annotation(
+            x=(x0 + x1) / 2,
+            y=1.0,
+            xref=xaxis_id,
+            yref=f"{yaxis_id} domain",
+            text=f"{label}",
+            showarrow=False,
+            yanchor="top",
+            font=dict(size=9, color="#666"),
+        )
 
 
 def get_subplot_axes(fig, row: int, col: int) -> tuple[str, str]:
@@ -342,6 +362,7 @@ def make_vltiplot_mini(
     tels: list[Any] | None = None,
     baseline_names: list[Any] | None = None,
     baseline_colors: list[Any] | None = None,
+    add_annotation: bool = True,
 ):
     """
     Add a minimalist VLTI layout under the colored title band.
@@ -469,26 +490,27 @@ def make_vltiplot_mini(
         scaleanchor=f"x{row}{col}",
         scaleratio=1,
         constrain="domain",
-        domain=[0.64, 0.92],  # hauteur et position haute
+        domain=np.array([0.64, 0.92]) - 0.05,  # hauteur et position haute
         visible=False,
         row=row,
         col=col,
     )
     # --- Add title band above
-    fig.add_annotation(
-        text=f"<b>{title.upper()}</b>",
-        xref="paper",
-        yref="paper",
-        x={1: 0.16, 2: 0.4, 3: 0.84}.get(col, 0.2),
-        y=0.88,
-        showarrow=False,
-        font=dict(size=12, color="black"),
-        align="center",
-        bgcolor=color,
-        bordercolor=color,
-        borderwidth=1,
-        borderpad=4,
-    )
+    if add_annotation:
+        fig.add_annotation(
+            text=f"<b>{title.upper()}</b>",
+            xref="paper",
+            yref="paper",
+            x={1: 0.16, 2: 0.4, 3: 0.84}.get(col, 0.2),
+            y=0.88,
+            showarrow=False,
+            font=dict(size=12, color="black"),
+            align="center",
+            bgcolor=color,
+            bordercolor=color,
+            borderwidth=1,
+            borderpad=4,
+        )
 
     return bl_lenghts
 
@@ -527,6 +549,7 @@ def make_table(
     y_annot: float,
     keys: list[str] | None = None,
     fill_colors: list[list[str]] | None = None,
+    add_annotation: bool = True,
 ):
     """
     Add a formatted table with a colored header (annotation) and borders to a Plotly figure.
@@ -599,32 +622,40 @@ def make_table(
     )
 
     # --- Add annotation as header band ---
-    fig.add_annotation(
-        text=f"<b>{title}</b>",
-        xref="paper",
-        yref="paper",
-        x=x_annot,
-        y=y_annot,
-        showarrow=False,
-        font=dict(size=11, color="black"),
-        align="center",
-        bgcolor=color,
-        bordercolor=color,
-        borderwidth=1,
-        borderpad=4,
-    )
+    if add_annotation:
+        fig.add_annotation(
+            text=f"<b>{title}</b>",
+            xref="paper",
+            yref="paper",
+            x=x_annot,
+            y=y_annot,
+            showarrow=False,
+            font=dict(size=11, color="black"),
+            align="center",
+            bgcolor=color,
+            bordercolor=color,
+            borderwidth=1,
+            borderpad=4,
+        )
 
     return fig
 
 
-def make_title(fig, meta, color="navy"):
+def _make_title_text(meta: dict, color: str = "navy") -> str:
+    """Return the HTML string used in the figure title annotation."""
     target = meta.get("target", "Unknown")
     config = meta.get("config", "A0-B2-D0-C1")
-    date = meta.get("date", "2025-05-20T00:35:04")
-    fig.add_annotation(
-        text=f"<b><span style='color:{color};font-size:20px;'>{target}</span></b><br>"
+    date = meta.get("date", "")
+    return (
+        f"<b><span style='color:{color};font-size:20px;'>{target}</span></b><br>"
         f"<span style='font-size:14px;'>Configuration: <b>{config}</b></span><br>"
-        f"<span style='font-size:12px;color:#555;'>Date: {date}</span>",
+        f"<span style='font-size:12px;color:#555;'>Date: {date}</span>"
+    )
+
+
+def make_title(fig, meta, color="navy"):
+    fig.add_annotation(
+        text=_make_title_text(meta, color),
         x=0.5,
         y=1.02,
         xref="paper",
@@ -638,20 +669,42 @@ def make_title(fig, meta, color="navy"):
     )
 
 
-def plot_spectrum(fig, data):
+def plot_spectrum(fig, data, flux_range: list[float] | None = None):
+    ylabel = "Flux (arbitrary units)"
+
     def _annotate_missing_flux() -> bool:
-        fig.add_annotation(
-            text="<b>NO FLUX DATA</b>",
-            xref="paper",
-            yref="paper",
-            x=0.05,
-            y=0.74,
-            showarrow=False,
-            font=dict(size=14, color="#555"),
-            align="center",
-            bgcolor="rgba(255,255,255,0.85)",
-            bordercolor="rgba(120,120,120,0.4)",
-            borderwidth=1,
+        # Add as a trace (not a layout annotation) so BCD combo visibility
+        # toggling via fig.data[i].visible hides/shows it correctly.
+        # x = mid-wavelength (keeps xaxis2 synced with visibility plots).
+        # y = 0.5 with yaxis2.range=[0,1] → always vertically centred.
+        try:
+            lam = np.ascontiguousarray(data["WLEN"], dtype=np.float64) * 1e6
+            mid_wl = float((lam.min() + lam.max()) / 2)
+            wl_range = [float(lam.min()), float(lam.max())]
+        except Exception:
+            mid_wl = 0.5
+            wl_range = [0, 1]
+        fig.add_trace(
+            go.Scatter(
+                x=[mid_wl],
+                y=[0.5],
+                mode="text",
+                text=["<b>NO FLUX DATA</b>"],
+                textfont=dict(size=14, color="#555"),
+                showlegend=False,
+                hoverinfo="skip",
+            ),
+            row=2,
+            col=1,
+        )
+        fig.update_xaxes(range=wl_range, showticklabels=False, row=2, col=1)
+        fig.update_yaxes(
+            domain=[0.52, 0.80],
+            title=ylabel,
+            range=[0, 1],
+            showticklabels=False,
+            row=2,
+            col=1,
         )
         return False
 
@@ -682,17 +735,6 @@ def plot_spectrum(fig, data):
     if not all_flux_values:
         return _annotate_missing_flux()
 
-    ymin = float(np.nanmin(all_flux_values))
-    ymax = float(np.nanmax(all_flux_values))
-
-    add_photometric_bands(
-        fig,
-        ymin,
-        ymax,
-        row=2,
-        col=1,
-    )
-
     for i in range(len(table_flux)):
         flux = np.ascontiguousarray(table_flux[i], dtype=np.float64)
         name_label = f"{ref_telescope[sta_index[i]]}-{ref_station[sta_index[i]]}"
@@ -711,17 +753,32 @@ def plot_spectrum(fig, data):
             col=1,
         )
 
+    # Add vrect bands AFTER flux traces so the subplot is non-empty
+    # (Plotly's add_vrect(row, col) requires at least one trace in the cell)
+    # Resolve xaxis/yaxis IDs from _grid_ref to bypass the subplot-empty
+    # guard, which crashes when the mixed table/xy grid contains Table traces.
+    _xid, _yid = "x2", "y2"  # spectrum is always row=2, col=1 in our fixed grid
+    try:
+        subplot_ref = fig._grid_ref[1][0]  # (row=2, col=1) 0-indexed
+        _xid = subplot_ref[0][0].trace_kwargs.get("xaxis", _xid)
+        _yid = subplot_ref[0][0].trace_kwargs.get("yaxis", _yid)
+    except Exception:
+        pass
+    add_photometric_bands(fig, xaxis_id=_xid, yaxis_id=_yid)
+
     wl_range = [lam[-1], lam[0]]
     fig.update_xaxes(
-        title="Wavelength (µm)",
+        title="",
+        showticklabels=False,
         title_standoff=10,
         row=2,
         col=1,
         range=wl_range,
     )
     fig.update_yaxes(
-        domain=[0.58, 0.80],
-        title="Flux (arbitrary units)",
+        domain=[0.52, 0.80],
+        title=ylabel,
+        range=flux_range,  # None → Plotly auto-scales
         row=2,
         col=1,
     )
@@ -816,7 +873,7 @@ def make_uvplot(
         zeroline=True,
         row=row,
         col=col,
-        domain=[0.6, 0.82],
+        domain=[0.52, 0.8],
     )
     fig.update_yaxes(scaleanchor="x", scaleratio=1)
 
@@ -865,7 +922,7 @@ def plot_obs_groups(
         v2_series = np.ascontiguousarray(data["VIS"]["VISAMP"], dtype=np.float64)
         v2_err = np.ascontiguousarray(data["VIS"]["VISAMPERR"], dtype=np.float64)
         v2_flags = data["VIS"]["FLAG"]
-        title = "Correlated flux"
+        title = "Correlated flux (Jy)"
         # Auto-scale for correlated flux (can be negative, like in legacy)
         if obs_range is None or obs_range == [0, None]:
             # Compute min/max allowing negative values
@@ -1076,31 +1133,15 @@ def plot_closure_groups(
     return fig
 
 
-def make_static_matisse_plot(data, mix_color: bool = False):
+def _build_canvas(data: dict) -> go.Figure:
+    """
+    Create the 8x3 subplot canvas and add the shared title annotation from *data*.
+    No data traces, no baseline / colour computation (all done per-BCD in
+    :func:`_add_bcd_all_traces`).
+    """
     meta = create_meta(data)
 
-    # Detect if we should display correlated flux instead of V²
-    # (automatic switch when FLUX photometry is unavailable, typically N-band)
-    has_flux = False
-    try:
-        flux_data = data.get("FLUX")
-        if flux_data is not None and flux_data.get("FLUX") is not None:
-            has_flux = True
-    except (KeyError, TypeError):
-        has_flux = False
-
-    use_corrflux = not has_flux
-
-    # Determine observable type and range
-    if use_corrflux:
-        obs_type = "V"  # VISAMP (correlated flux)
-        vis_range = [0.0, None]  # Auto-scale for correlated flux
-    else:
-        obs_type = "V2"  # Squared visibility
-        vis_range = [0.0, 1.1]
-
     rel_scale_vis = 0.08
-    # --- Création du canevas 8x3 ---
     fig = make_subplots(
         rows=8,
         cols=3,
@@ -1118,8 +1159,8 @@ def make_static_matisse_plot(data, mix_color: bool = False):
         horizontal_spacing=0.08,
         column_widths=[0.33, 0.33, 0.34],
         row_heights=[
-            0.13,
-            0.18,
+            0.2,
+            0.25,
             rel_scale_vis,
             rel_scale_vis,
             rel_scale_vis,
@@ -1127,16 +1168,164 @@ def make_static_matisse_plot(data, mix_color: bool = False):
             rel_scale_vis,
             rel_scale_vis,
         ],
-        # shared_xaxes="columns",
     )
 
+    # Title annotation is always at annotations[0] – updated by buttons in multi-BCD mode
+    make_title(fig, meta)
+
+    # Fixed axis domain settings (independent of data content)
+    fig.update_yaxes(domain=[0.82, 1], row=1, col=3)
+    fig.update_yaxes(domain=[0.82, 1], row=2, col=1)
+
+    return fig
+
+
+def _compute_band_ranges(band_data_dict: dict[str, dict]) -> dict:
+    """
+    Scan every BCD in *band_data_dict* and return consistent axis ranges for
+    the whole band:
+
+    - ``wl_range``  : ``[wl_min, wl_max]`` in µm (X axis)
+    - ``vis_range`` : Y range for the V²/corr-flux rows
+    - ``flux_range``: Y range for the spectrum panel
+
+    Any value may be ``None`` when the corresponding data block is absent.
+    """
+    wl_min: float | None = None
+    wl_max: float | None = None
+    vis_min: float | None = None
+    vis_max: float | None = None
+    flux_min: float | None = None
+    flux_max: float | None = None
+    is_corrflux = False
+
+    for bcd_data in band_data_dict.values():
+        # --- Wavelength ---
+        try:
+            lam = np.ascontiguousarray(bcd_data["WLEN"], dtype=np.float64) * 1e6
+            w0, w1 = float(lam.min()), float(lam.max())
+            wl_min = w0 if wl_min is None else min(wl_min, w0)
+            wl_max = w1 if wl_max is None else max(wl_max, w1)
+        except Exception:
+            pass
+
+        # --- Visibility/corrflux ---
+        vis2_block = bcd_data.get("VIS2")
+        vis_block = bcd_data.get("VIS")
+        flux_block = bcd_data.get("FLUX")
+        has_flux = flux_block is not None and flux_block.get("FLUX") is not None
+
+        if not has_flux and vis_block is not None:
+            # Correlated flux (N band, no photometry)
+            is_corrflux = True
+            try:
+                arr = np.ascontiguousarray(vis_block["VISAMP"], dtype=np.float64)
+                v0, v1 = float(np.nanmin(arr)), float(np.nanmax(arr))
+                vis_min = v0 if vis_min is None else min(vis_min, v0)
+                vis_max = v1 if vis_max is None else max(vis_max, v1)
+            except Exception:
+                pass
+        elif vis2_block is not None:
+            # Squared visibility: clamp to [-0.2, 1.2]
+            try:
+                arr = np.ascontiguousarray(vis2_block["VIS2"], dtype=np.float64)
+                v0 = max(-0.2, float(np.nanmin(arr)))
+                v1 = min(1.2, float(np.nanmax(arr)))
+                vis_min = v0 if vis_min is None else min(vis_min, v0)
+                vis_max = v1 if vis_max is None else max(vis_max, v1)
+            except Exception:
+                pass
+
+        # --- Spectrum ---
+        if has_flux and isinstance(flux_block, dict):
+            try:
+                arr = np.ascontiguousarray(flux_block["FLUX"], dtype=np.float64)
+                f0, f1 = float(np.nanmin(arr)), float(np.nanmax(arr))
+                flux_min = f0 if flux_min is None else min(flux_min, f0)
+                flux_max = f1 if flux_max is None else max(flux_max, f1)
+            except Exception:
+                pass
+
+    wl_range: list[float] | None = None
+    if wl_min is not None and wl_max is not None:
+        wl_range = [wl_min, wl_max]
+
+    vis_range: list[float] | None = None
+    if vis_min is not None and vis_max is not None:
+        if is_corrflux:
+            margin = max((vis_max - vis_min) * 0.1, 1.0)
+            vis_range = [vis_min - margin, vis_max + margin]
+        else:
+            vis_range = [vis_min, vis_max]
+
+    flux_range: list[float] | None = None
+    if flux_min is not None and flux_max is not None:
+        margin = max((flux_max - flux_min) * 0.1, 1.0)
+        flux_range = [flux_min - margin, flux_max + margin]
+
+    return {"wl_range": wl_range, "vis_range": vis_range, "flux_range": flux_range}
+
+
+def _add_bcd_all_traces(
+    fig: go.Figure,
+    data: dict,
+    mix_color: bool = False,
+    with_annotations: bool = True,
+    vis_range_override: list[float] | None = None,
+    flux_range_override: list[float] | None = None,
+) -> tuple[int, int]:
+    """
+    Add **all** per-BCD traces to *fig*: tables, spectrum, VLTI layout, UV plot and
+    interferometric data (V²/corrflux, diff phase, closure phase).
+
+    Baseline names, CP names, observable type and colours are computed directly from
+    *data* so that each BCD uses its own geometry.
+
+    Parameters
+    ----------
+    mix_color : bool
+        If ``True``, closure-phase colours are derived by mixing the baseline colours.
+    with_annotations : bool
+        When ``True`` (default), annotation labels (table headers, VLTI title) are
+        added.  Set to ``False`` for secondary BCDs to avoid duplicate annotations.
+
+    Returns
+    -------
+    tuple[int, int]
+        Half-open trace index range ``[n_start, n_end)`` for all traces added.
+    """
+    n_start = len(fig.data)
+
+    # --- Per-BCD geometry / observable type ---------------------------------
     baseline_names = build_blname_list(data)
     cp_names = build_cpname_list(data)
 
-    # Make title with informations
-    make_title(fig, meta)
+    has_flux = False
+    try:
+        flux_data = data.get("FLUX")
+        if flux_data is not None and flux_data.get("FLUX") is not None:
+            has_flux = True
+    except (KeyError, TypeError):
+        pass
 
-    # Block 1 - Metadata
+    obs_type = "V2" if has_flux else "V"
+    vis_range: list = [0.0, 1.1] if has_flux else [0.0, None]
+    # Allow caller to override with a pre-computed band-wide range
+    if vis_range_override is not None:
+        vis_range = vis_range_override
+
+    if not has_flux and with_annotations:
+        fig.update_yaxes(showticklabels=False, row=2, col=1)
+        fig.update_xaxes(showticklabels=False, row=2, col=1)
+
+    if mix_color:
+        cp_colors = mix_colors_for_closure(baseline_colors, baseline_names, cp_names)
+    else:
+        cp_colors = ["#FAA050", "#E0C9A6", "#BE7C7E", "#26AEB8"]
+
+    meta = create_meta(data)
+
+    # --- Tables ---
     make_table(
         fig,
         data=meta,
@@ -1147,24 +1336,21 @@ def make_static_matisse_plot(data, mix_color: bool = False):
         x_annot=0.08,
         y_annot=1.04,
         keys=["band", "disp", "bcd", "dit", "chopping"],
+        add_annotation=with_annotations,
     )
 
-    # Block 2 - Quality check
-    # -----------------------
-    quality = {}
-    quality["seeing"] = data["SEEING"] * u.arcsec
+    quality: dict = {}
+    quality["seeing"] = round(data["SEEING"] * u.arcsec, 2)
     quality["tau0"] = round(data["TAU0"] * 1e3, 2) * u.ms
     quality["wind_speed"] = data["HDR"].get("ESO ISS AMBI WINDSP", np.nan) * u.m / u.s
     quality["humidity"] = data["HDR"].get("ESO ISS AMBI RHUM", np.nan) * u.percent
     airmass_start = data["HDR"].get("ESO ISS AIRM START", np.nan)
     airmass_end = data["HDR"].get("ESO ISS AIRM END", np.nan)
     quality["airmass"] = round((airmass_start + airmass_end) / 2.0, 2)
-
     fill_colors = [
         ["rgba(255,255,255,0.8)"],
         [_qc_color(v, k) for k, v in quality.items()],
     ]
-
     make_table(
         fig,
         data=quality,
@@ -1175,12 +1361,17 @@ def make_static_matisse_plot(data, mix_color: bool = False):
         col=3,
         x_annot=0.93,
         y_annot=1.04,
+        add_annotation=with_annotations,
     )
 
+    # --- Spectrum ---
+    plot_spectrum(fig, data, flux_range=flux_range_override)
+
+    # --- VLTI layout + UV plot ---
     ref_station = {
         data["STA_INDEX"][i]: data["STA_NAME"][i] for i in range(len(data["STA_INDEX"]))
     }
-    station_flux = []
+    station_flux: list = []
     try:
         flux_block = data["FLUX"]
     except (KeyError, TypeError):
@@ -1192,7 +1383,7 @@ def make_static_matisse_plot(data, mix_color: bool = False):
             sta_index = None
         if sta_index is not None:
             station_flux = [ref_station[sta] for sta in sta_index]
-    # Get UV coordinates (fallback to VIS if VIS2 unavailable)
+
     if data.get("VIS2") is not None:
         ucoord = data["VIS2"]["U"]
         vcoord = data["VIS2"]["V"]
@@ -1200,17 +1391,6 @@ def make_static_matisse_plot(data, mix_color: bool = False):
         ucoord = data["VIS"]["U"]
         vcoord = data["VIS"]["V"]
 
-    fig.update_yaxes(domain=[0.82, 1.00], row=1, col=3)
-
-    # Block 3 - Spectrum
-    has_flux = plot_spectrum(fig, data)
-    fig.update_yaxes(domain=[0.68, 0.84], row=2, col=1)
-    if not has_flux:
-        fig.update_yaxes(showticklabels=False, row=2, col=1)
-        fig.update_xaxes(showticklabels=False, row=2, col=1)
-
-    ucoord = data["VIS2"]["U"]
-    vcoord = data["VIS2"]["V"]
     ncols = np.size(ucoord) // len(baseline_colors)
     array_type = "UT"
     if "AT" in data["TEL_NAME"][0]:
@@ -1225,6 +1405,7 @@ def make_static_matisse_plot(data, mix_color: bool = False):
         tels=station_flux,
         baseline_names=baseline_names,
         baseline_colors=baseline_colors,
+        add_annotation=with_annotations,
     )
 
     make_uvplot(
@@ -1237,7 +1418,7 @@ def make_static_matisse_plot(data, mix_color: bool = False):
         bl_lengths=bl_lengths,
     )
 
-    # VISIBILITY PLOT (auto-switch to correlated flux if VIS2 unavailable)
+    # --- Interferometric data ---
     plot_obs_groups(
         fig,
         data,
@@ -1247,8 +1428,6 @@ def make_static_matisse_plot(data, mix_color: bool = False):
         obs_name=obs_type,
         obs_range=vis_range,
     )
-
-    # DIFF PHASE PLOT
     plot_obs_groups(
         fig,
         data,
@@ -1259,12 +1438,6 @@ def make_static_matisse_plot(data, mix_color: bool = False):
         obs_range=[-190, 190],
         col=2,
     )
-
-    if mix_color:
-        cp_colors = mix_colors_for_closure(baseline_colors, baseline_names, cp_names)
-    else:
-        cp_colors = ["#FAA050", "#E0C9A6", "#BE7C7E", "#26AEB8"]
-
     plot_closure_groups(
         fig,
         data,
@@ -1273,42 +1446,559 @@ def make_static_matisse_plot(data, mix_color: bool = False):
         obs_range=[-190, 190],
     )
 
+    n_end = len(fig.data)
+    return n_start, n_end
+
+
+def _finalize_figure(fig: go.Figure) -> None:
+    """Apply final layout settings and x-axis wavelength linking."""
     fig.update_layout(
         template="plotly_white",
-        width=1200,
-        height=950,
+        width=1100,
+        height=820,
         margin=dict(t=40, b=20, l=60, r=40),
     )
 
-    # fig.update_xaxes(matches="x2", row=2, col=1)
-    fig.update_xaxes(matches="x2", row=3, col=1)
-    fig.update_xaxes(matches="x2", row=4, col=1)
-    fig.update_xaxes(matches="x2", row=5, col=1)
-    fig.update_xaxes(matches="x2", row=6, col=1)
-    fig.update_xaxes(matches="x2", row=7, col=1)
-    fig.update_xaxes(matches="x2", row=8, col=1)
+    for row in range(3, 9):
+        fig.update_xaxes(matches="x2", row=row, col=1)
+        fig.update_xaxes(matches="x2", row=row, col=2)
 
-    fig.update_xaxes(matches="x2", row=3, col=2)
-    fig.update_xaxes(matches="x2", row=4, col=2)
-    fig.update_xaxes(matches="x2", row=5, col=2)
-    fig.update_xaxes(matches="x2", row=6, col=2)
-    fig.update_xaxes(matches="x2", row=7, col=2)
-    fig.update_xaxes(matches="x2", row=8, col=2)
+    for row in range(4, 8):
+        fig.update_xaxes(matches="x2", row=row, col=3)
 
-    fig.update_xaxes(matches="x2", row=4, col=3)
-    fig.update_xaxes(matches="x2", row=5, col=3)
-    fig.update_xaxes(matches="x2", row=6, col=3)
-    fig.update_xaxes(matches="x2", row=7, col=3)
 
+def make_static_matisse_plot(data, mix_color: bool = False):
+    """Build a static single-BCD MATISSE figure."""
+    fig = _build_canvas(data)
+    _add_bcd_all_traces(fig, data, mix_color=mix_color, with_annotations=True)
+    _finalize_figure(fig)
     return fig
 
 
-def show_plot(fig, filename: str = "matisse_view.html", auto_open: bool = True):
+def _detect_band_from_header(hdr: Any) -> str:
+    """
+    Determine spectral band from a FITS primary header.
+
+    Returns
+    -------
+    str
+        ``"N"`` (AQUARIUS detector), ``"LM"`` (HAWAII-2RG detector), or ``""`` unknown.
+    """
+    det = hdr.get("HIERARCH ESO DET CHIP NAME", "")
+    if det == "AQUARIUS":
+        return "N"
+    if det == "HAWAII-2RG":
+        return "LM"
+    return ""
+
+
+def _detect_chop_from_header(hdr: Any) -> str:
+    """
+    Determine chopping mode from a FITS primary header.
+
+    Returns
+    -------
+    str
+        ``"NOCHOP"`` when ``HIERARCH ESO ISS CHOP ST == "F"``, else ``"CHOP"``.
+    """
+    chop = hdr.get("HIERARCH ESO ISS CHOP ST", "F")
+    return "NOCHOP" if chop == "F" else "CHOP"
+
+
+def _bcd_button_sort_key(bcd_key: str) -> tuple[int, str]:
+    """Sort BCD keys as OUT/OUT, IN/IN, IN/OUT, OUT/IN, then others."""
+    upper = bcd_key.upper()
+    if upper.startswith("OUT_OUT"):
+        return (0, upper)
+    if upper.startswith("IN_IN"):
+        return (1, upper)
+    if upper.startswith("IN_OUT"):
+        return (2, upper)
+    if upper.startswith("OUT_IN"):
+        return (3, upper)
+    return (4, upper)
+
+
+def find_siblings_all_bands(file_path: Path | str) -> dict[str, dict[str, Path]]:
+    """
+    Scan the parent directory of *file_path* for FITS files that share the same
+    ``HIERARCH ESO TPL START`` keyword, grouped by spectral band.
+
+    Returns
+    -------
+    dict[str, dict[str, Path]]
+        ``{band: {bcd_key: path}}``, e.g.
+        ``{"LM": {"IN_IN": ..., "OUT_OUT": ...}, "N": {"IN_IN": ...}}``.
+    """
+    from astropy.io import fits as astrofits
+
+    file_path = Path(file_path).resolve()
+    parent = file_path.parent
+
+    try:
+        primary_hdr = astrofits.getheader(file_path, 0)
+        tpl_start = primary_hdr.get("HIERARCH ESO TPL START")
+    except Exception:
+        tpl_start = None
+
+    candidates: dict[str, list[tuple[str, str, Path]]] = {}
+    for fits_file in sorted(parent.glob("*.fits")):
+        try:
+            hdr = astrofits.getheader(fits_file, 0)
+            file_tpl = hdr.get("HIERARCH ESO TPL START")
+        except Exception:
+            continue
+
+        if tpl_start is not None and file_tpl != tpl_start:
+            continue
+
+        band = _detect_band_from_header(hdr)
+        if not band:
+            continue
+
+        bcd1 = hdr.get("HIERARCH ESO INS BCD1 NAME", "")
+        bcd2 = hdr.get("HIERARCH ESO INS BCD2 NAME", "")
+        if bcd1 and bcd2:
+            base_bcd_key = f"{bcd1}_{bcd2}"
+        else:
+            # No BCD metadata (e.g. calibrated files) → use filename stem so
+            # every file gets a unique entry instead of all collapsing to IN_IN.
+            base_bcd_key = fits_file.stem
+
+        chop_tag = _detect_chop_from_header(hdr)
+        candidates.setdefault(band, []).append((base_bcd_key, chop_tag, fits_file))
+
+    result: dict[str, dict[str, Path]] = {}
+    for band, entries in candidates.items():
+        result[band] = {}
+        base_counts: dict[str, int] = {}
+        for base_key, _, _ in entries:
+            base_counts[base_key] = base_counts.get(base_key, 0) + 1
+
+        for base_key, chop_tag, fits_file in entries:
+            if base_counts.get(base_key, 0) > 1:
+                # Same BCD appears multiple times in this band:
+                # expose chopping explicitly in selector labels.
+                bcd_key = f"{base_key}_{chop_tag}"
+            else:
+                bcd_key = base_key
+
+            # Last-resort disambiguation if duplicates still remain.
+            key = bcd_key
+            n = 1
+            while key in result[band]:
+                n += 1
+                key = f"{bcd_key}_{n}"
+            result[band][key] = fits_file
+
+    return result
+
+
+def make_multi_bcd_plot(file_path: Path | str, mix_color: bool = False) -> go.Figure:
+    """
+    Build a MATISSE figure with Plotly ``updatemenus`` controls to switch between
+    BCD positions (IN_IN, OUT_OUT, …) and, when present, spectral bands (LM / N).
+
+    All files sharing the same ``ESO TPL START`` as *file_path* are discovered.
+    Files are grouped by band (LM / N) and BCD position.  A single static HTML
+    figure is produced where buttons or a dropdown switch the active dataset.
+
+    Falls back to :func:`make_static_matisse_plot` when only one file is found.
+
+    Parameters
+    ----------
+    file_path : Path | str
+        One of the OIFITS files; determines TPL START and the default combo.
+    mix_color : bool, optional
+        Derive closure-phase colours from baseline colours when ``True``.
+    """
+    from astropy.io import fits as astrofits
+
+    from matisse.core.utils.oifits_reader import open_oifits
+
+    file_path = Path(file_path).resolve()
+
+    # --- Discover all (band × BCD) siblings ---------------------------------
+    all_siblings = find_siblings_all_bands(file_path)  # {band: {bcd: path}}
+
+    total_combos = sum(len(d) for d in all_siblings.values())
+    if total_combos <= 1:
+        data = open_oifits(str(file_path))
+        return make_static_matisse_plot(data, mix_color)
+
+    # --- Identify primary (band, BCD) ---------------------------------------
+    try:
+        primary_hdr = astrofits.getheader(file_path, 0)
+        primary_band = _detect_band_from_header(primary_hdr)
+        bcd1 = primary_hdr.get("HIERARCH ESO INS BCD1 NAME", "IN")
+        bcd2 = primary_hdr.get("HIERARCH ESO INS BCD2 NAME", "IN")
+        primary_bcd = f"{bcd1}_{bcd2}"
+        primary_chop = _detect_chop_from_header(primary_hdr)
+    except Exception:
+        primary_band = next(iter(all_siblings))
+        primary_bcd = next(iter(all_siblings[primary_band]))
+        primary_chop = ""
+
+    if primary_band not in all_siblings:
+        primary_band = next(iter(all_siblings))
+    if primary_bcd not in all_siblings[primary_band]:
+        chop_key = f"{primary_bcd}_{primary_chop}" if primary_chop else ""
+        if chop_key and chop_key in all_siblings[primary_band]:
+            primary_bcd = chop_key
+        else:
+            primary_bcd = next(iter(all_siblings[primary_band]))
+
+    # --- Load all datasets --------------------------------------------------
+    all_data: dict[str, dict[str, dict]] = {}
+    for band, bcd_paths in all_siblings.items():
+        all_data[band] = {}
+        for bcd_key, bcd_path in bcd_paths.items():
+            try:
+                all_data[band][bcd_key] = open_oifits(str(bcd_path))
+            except Exception as exc:
+                logger.warning("Could not load %s (%s) – skipped", bcd_path.name, exc)
+
+    all_data = {b: d for b, d in all_data.items() if d}
+    if not all_data:
+        data = open_oifits(str(file_path))
+        return make_static_matisse_plot(data, mix_color)
+
+    if primary_band not in all_data:
+        primary_band = next(iter(all_data))
+    if primary_bcd not in all_data[primary_band]:
+        primary_bcd = next(iter(all_data[primary_band]))
+
+    primary_data = all_data[primary_band][primary_bcd]
+    multi_band = len(all_data) > 1
+
+    # --- Pre-compute per-band axis ranges ----------------------------------
+    # One consistent wl_range / vis_range / flux_range shared across all BCDs
+    # of each band, so switching BCD within a band never rescales the axes.
+    band_ranges: dict[str, dict] = {
+        band: _compute_band_ranges(bcd_dict) for band, bcd_dict in all_data.items()
+    }
+
+    # --- Build the shared canvas -------------------------------------------
+    fig = _build_canvas(primary_data)
+
+    # --- Add all traces for every (band, bcd) combo ------------------------
+    # Ordering: secondary-band combos first, then primary band (non-primary
+    # BCDs), primary BCD absolutely last.  The last _add_bcd_all_traces call
+    # sets the axis ranges in the layout — we want the primary combo's ranges
+    # to be the initial state shown to the user.
+    all_combos_flat: list[tuple[str, str]] = []
+    for band, bcd_dict in all_data.items():
+        if band == primary_band:
+            continue
+        for bcd_key in bcd_dict:
+            all_combos_flat.append((band, bcd_key))
+    for bcd_key in all_data.get(primary_band, {}):
+        if bcd_key != primary_bcd:
+            all_combos_flat.append((primary_band, bcd_key))
+    all_combos_flat.append((primary_band, primary_bcd))  # primary last
+    combos_ordered = all_combos_flat
+
+    combo_ranges: dict[tuple[str, str], tuple[int, int]] = {}
+    for combo in combos_ordered:
+        band, bcd_key = combo
+        bcd_data = all_data[band][bcd_key]
+        br = band_ranges[band]
+        is_primary = combo == (primary_band, primary_bcd)
+        n_start, n_end = _add_bcd_all_traces(
+            fig,
+            bcd_data,
+            mix_color=mix_color,
+            with_annotations=is_primary,
+            vis_range_override=br.get("vis_range"),
+            flux_range_override=br.get("flux_range"),
+        )
+        combo_ranges[combo] = (n_start, n_end)
+
+    # Hide non-primary traces
+    for combo, (n_start, n_end) in combo_ranges.items():
+        if combo != (primary_band, primary_bcd):
+            for i in range(n_start, n_end):
+                fig.data[i].visible = False
+
+    # --- Pre-compute title HTML for every combo ----------------------------
+    combo_titles = {
+        (band, bcd_key): _make_title_text(create_meta(bcd_data))
+        for band, bcd_dict in all_data.items()
+        for bcd_key, bcd_data in bcd_dict.items()
+    }
+
+    if multi_band:
+        # ----------------------------------------------------------------
+        # Two independent HTML <select> controls injected via post_script.
+        # This is the only reliable way to cross band × BCD in a static
+        # Plotly HTML file (two native Plotly updatemenus cannot share
+        # state; a combined dropdown collapses orthogonal axes into one).
+        # ----------------------------------------------------------------
+        import json
+
+        vis_lookup: dict[str, list[bool]] = {}
+        titles_lookup: dict[str, str] = {}
+        for active_combo in combos_ordered:
+            vis: list[bool] = []
+            for combo, (n_start, n_end) in combo_ranges.items():
+                vis.extend([combo == active_combo] * (n_end - n_start))
+            key = f"{active_combo[0]}::{active_combo[1]}"
+            vis_lookup[key] = vis
+            titles_lookup[key] = combo_titles[active_combo]
+
+        bcds_per_band: dict[str, list[str]] = {}
+        for band, bcd_key in combos_ordered:
+            bcds_per_band.setdefault(band, [])
+            if bcd_key not in bcds_per_band[band]:
+                bcds_per_band[band].append(bcd_key)
+        for band in bcds_per_band:
+            bcds_per_band[band] = sorted(bcds_per_band[band], key=_bcd_button_sort_key)
+
+        all_bands = list(dict.fromkeys(b for b, _ in combos_ordered))
+
+        # Per-band relayout args: x-axis wavelength range + spectrum & vis y-ranges.
+        # Axis IDs hardcoded from the 8x3 subplot grid (2 tables in row 1):
+        #   xaxis2  = spectrum x  (all signal x-axes linked via matches="x2")
+        #   yaxis2  = spectrum y
+        #   yaxis5/8/11/14/17/20 = vis rows 3-8, col 1
+        _VIS_Y_AXES = [
+            "yaxis5",
+            "yaxis8",
+            "yaxis11",
+            "yaxis14",
+            "yaxis17",
+            "yaxis20",
+        ]
+        layout_per_band: dict[str, dict] = {}
+        for band, br in band_ranges.items():
+            updates: dict = {}
+            _band_has_flux = any(
+                (d.get("FLUX") or {}).get("FLUX") is not None
+                for d in all_data.get(band, {}).values()
+            )
+            if _band_has_flux:
+                # Normal band with flux: show real wavelength / flux ranges
+                if br.get("wl_range"):
+                    updates["xaxis2.range"] = br["wl_range"]
+                if br.get("flux_range"):
+                    updates["yaxis2.range"] = br["flux_range"]
+            else:
+                # No flux: keep x synced with wl_range; fix y to [0,1] so the
+                # NO FLUX DATA text (placed at mid_wl, y=0.5) stays centred.
+                if br.get("wl_range"):
+                    updates["xaxis2.range"] = br["wl_range"]
+                updates["yaxis2.range"] = [0, 1]
+            if br.get("vis_range"):
+                for ax in _VIS_Y_AXES:
+                    updates[f"{ax}.range"] = br["vis_range"]
+            # ylabel for the middle visibility row (b_idx=2 → row 5 col 1 → yaxis11)
+            # switches between V² (has flux) and Correlated flux (no flux)
+            updates["yaxis11.title.text"] = (
+                "V²" if _band_has_flux else "Correlated flux (Jy)"
+            )
+            # spectrum tick labels: hide when no flux (only the NO FLUX DATA trace shown)
+            updates["xaxis2.showticklabels"] = _band_has_flux
+            updates["yaxis2.showticklabels"] = _band_has_flux
+            layout_per_band[band] = updates
+
+        post_script = (
+            """
+(function() {
+  var gd = document.querySelector('.plotly-graph-div');
+  var visLookup     = """
+            + json.dumps(vis_lookup)
+            + """;
+  var titlesLookup  = """
+            + json.dumps(titles_lookup)
+            + """;
+  var bcdsPerBand   = """
+            + json.dumps(bcds_per_band)
+            + """;
+  var allBands      = """
+            + json.dumps(all_bands)
+            + """;
+  var layoutPerBand = """
+            + json.dumps(layout_per_band)
+            + """;
+  var initBand = """
+            + json.dumps(primary_band)
+            + """;
+  var initBcd  = """
+            + json.dumps(primary_bcd)
+            + """;
+
+  // --- Build selector bar ------------------------------------------------
+  var bar = document.createElement('div');
+  bar.style.cssText = [
+    'display:flex', 'align-items:center', 'gap:8px',
+    'padding:5px 10px', 'font-family:Arial,sans-serif',
+    'font-size:13px', 'background:#f5f5f5',
+    'border-bottom:1px solid #d0d8e4'
+  ].join(';');
+
+  function makeLabel(text) {
+    var s = document.createElement('span');
+    s.textContent = text;
+    s.style.fontWeight = 'bold';
+    s.style.color = '#444';
+    return s;
+  }
+  function makeSel(style_extra) {
+    var s = document.createElement('select');
+    s.style.cssText = (
+      'padding:3px 8px;border-radius:4px;border:1px solid #9ecae1;' +
+      'font-size:13px;cursor:pointer;' + (style_extra || '')
+    );
+    return s;
+  }
+
+  var bandSel = makeSel('min-width:70px;');
+  allBands.forEach(function(b) {
+    var o = new Option('Band : ' + b, b);
+    if (b === initBand) o.selected = true;
+    bandSel.add(o);
+  });
+
+  var bcdSel = makeSel('min-width:120px;');
+  function populateBcds(band, selectBcd) {
+    while (bcdSel.options.length) bcdSel.remove(0);
+    (bcdsPerBand[band] || []).forEach(function(bcd) {
+      var o = new Option('BCD : ' + bcd.replace(/_/g, '/'), bcd);
+      bcdSel.add(o);
+    });
+    bcdSel.value =
+      ((bcdsPerBand[band] || []).indexOf(selectBcd) !== -1)
+        ? selectBcd
+        : (bcdsPerBand[band] || [initBcd])[0];
+  }
+  populateBcds(initBand, initBcd);
+
+  bar.appendChild(makeLabel(''));
+  bar.appendChild(bandSel);
+  bar.appendChild(bcdSel);
+  gd.parentNode.insertBefore(bar, gd);
+
+  // --- Update plot -------------------------------------------------------
+  // On band or BCD change: update trace visibility, axis ranges (wl + y)
+  // and the title annotation in a single pair of restyle/relayout calls.
+  function updatePlot() {
+    var band = bandSel.value;
+    var key  = band + '::' + bcdSel.value;
+    if (!visLookup[key]) return;
+    Plotly.restyle(gd, {visible: visLookup[key]});
+    var relayout = Object.assign({}, layoutPerBand[band] || {});
+    relayout['annotations[0].text'] = titlesLookup[key];
+    Plotly.relayout(gd, relayout);
+  }
+
+  bandSel.addEventListener('change', function() {
+    // Keep the current BCD selection if it exists in the new band.
+    populateBcds(bandSel.value, bcdSel.value);
+    updatePlot();
+  });
+  bcdSel.addEventListener('change', updatePlot);
+})();
+"""
+        )
+        fig._matisse_post_script = post_script
+        _finalize_figure(fig)
+        return fig
+
+    # ---- Single-band: same HTML <select> bar as multi-band, BCD only -----
+    import json
+
+    vis_lookup_sb: dict[str, list[bool]] = {}
+    titles_lookup_sb: dict[str, str] = {}
+    for active_combo in combos_ordered:
+        vis_sb: list[bool] = []
+        for combo, (n_start, n_end) in combo_ranges.items():
+            vis_sb.extend([combo == active_combo] * (n_end - n_start))
+        vis_lookup_sb[active_combo[1]] = vis_sb
+        titles_lookup_sb[active_combo[1]] = combo_titles[active_combo]
+
+    bcd_keys_sb = sorted(
+        list(dict.fromkeys(bcd_key for _, bcd_key in combos_ordered)),
+        key=_bcd_button_sort_key,
+    )
+
+    post_script_sb = (
+        """
+(function() {
+  var gd = document.querySelector('.plotly-graph-div');
+  var visLookup    = """
+        + json.dumps(vis_lookup_sb)
+        + """;
+  var titlesLookup = """
+        + json.dumps(titles_lookup_sb)
+        + """;
+  var allBcds      = """
+        + json.dumps(bcd_keys_sb)
+        + """;
+  var initBcd      = """
+        + json.dumps(primary_bcd)
+        + """;
+
+  var bar = document.createElement('div');
+  bar.style.cssText = [
+    'display:flex', 'align-items:center', 'gap:8px',
+    'padding:5px 10px', 'font-family:Arial,sans-serif',
+    'font-size:13px', 'background:#f5f5f5',
+    'border-bottom:1px solid #d0d8e4'
+  ].join(';');
+
+  var bcdSel = document.createElement('select');
+  bcdSel.style.cssText = (
+    'padding:3px 8px;border-radius:4px;border:1px solid #9ecae1;' +
+    'font-size:13px;cursor:pointer;min-width:120px;'
+  );
+  allBcds.forEach(function(bcd) {
+    var o = new Option('BCD : ' + bcd.replace(/_/g, '/'), bcd);
+    if (bcd === initBcd) o.selected = true;
+    bcdSel.add(o);
+  });
+  bar.appendChild(bcdSel);
+  gd.parentNode.insertBefore(bar, gd);
+
+  function updatePlot() {
+    var key = bcdSel.value;
+    if (!visLookup[key]) return;
+    Plotly.restyle(gd, {visible: visLookup[key]});
+    Plotly.relayout(gd, {'annotations[0].text': titlesLookup[key]});
+  }
+
+  bcdSel.addEventListener('change', updatePlot);
+})();
+"""
+    )
+    fig._matisse_post_script = post_script_sb
+    _finalize_figure(fig)
+    return fig
+
+
+def show_plot(
+    fig,
+    filename: str = "matisse_view.html",
+    auto_open: bool = True,
+    post_script: str = "",
+) -> go.Figure:
     """
     Display the MATISSE plot in a persistent HTML file.
     Reusing the same file avoids opening a new browser tab each time.
+
+    Parameters
+    ----------
+    fig : go.Figure
+    filename : str
+        Output HTML filename.
+    auto_open : bool
+        Open the file in the default browser after writing.
+    post_script : str
+        Optional JavaScript snippet injected at the end of the HTML ``<body>``.
+        Used to add interactive controls (e.g. band × BCD selectors) that go
+        beyond what static Plotly ``updatemenus`` support.
     """
-    # Save figure in HTML file to be static on web browser
-    pio.write_html(fig, file=filename, auto_open=auto_open)
+    pio.write_html(
+        fig, file=filename, auto_open=auto_open, post_script=post_script or None
+    )
     print(f"✅ Figure saved to {filename}. Refresh the browser tab to see updates.")
     return fig

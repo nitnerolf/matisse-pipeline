@@ -1,5 +1,6 @@
 import numpy as np
 import plotly.graph_objects as go
+import pytest
 
 from matisse.viewer import viewer_plotly as vp
 
@@ -90,57 +91,41 @@ def test_mix_colors_fallback():
     assert result == ["#161313"]  # Fallback color
 
 
-def test_add_photometric_bands_adds_filled_scatter_traces(mock_fig):
+def test_add_photometric_bands_adds_vrects(mock_fig):
     """
-    vp.add_photometric_bands should add 3 filled Scatter traces
-    (L, M, N bands) to the figure and return the same figure object.
+    vp.add_photometric_bands should add 3 rect shapes (L, M, N bands)
+    via fig.add_shape using explicit xaxis_id/yaxis_id,
+    plus 3 annotations for band labels.
     """
-    ymin, ymax = 0.0, 1.0
-    row, col = 1, 1
+    vp.add_photometric_bands(mock_fig, xaxis_id="x2", yaxis_id="y2")
 
-    out = vp.add_photometric_bands(mock_fig, ymin, ymax, row, col)
+    # Exactly 3 add_shape calls (L / M / N bands)
+    assert mock_fig.add_shape.call_count == 3
+    # No Scatter traces added
+    assert mock_fig.add_trace.call_count == 0
 
-    # Returns the same figure-like object
-    assert out is mock_fig
-
-    # Exactly 3 traces added (L/M/N)
-    assert mock_fig.add_trace.call_count == 3
-
-    # Inspect the first call for structure and kwargs (row/col)
-    first_call = mock_fig.add_trace.call_args_list[0]
-    args, kwargs = first_call
-
-    # Positional arg 0 should be a go.Scatter
-    assert isinstance(args[0], go.Scatter)
-
-    # The scatter should be a filled polygon
-    s = args[0]
-    assert s.fill == "toself"
-    assert s.mode == "none"
-    assert s.opacity == 0.3
-    assert s.hoverinfo == "skip"
-    assert isinstance(s.fillcolor, str) and s.fillcolor  # hex color present
-    assert isinstance(s.name, str)  # e.g., "L-band"
-
-    # Row/col routed to add_trace
-    assert kwargs.get("row") == row
-    assert kwargs.get("col") == col
+    # Each call must use explicit xref/yref (no row/col)
+    for call in mock_fig.add_shape.call_args_list:
+        _, kwargs = call
+        assert "row" not in kwargs
+        assert "col" not in kwargs
+        assert kwargs.get("xref") == "x2"
+        assert kwargs.get("yref") == "y2 domain"
+        assert kwargs.get("layer") == "below"
+        assert kwargs.get("line_width") == 0
 
 
-def test_add_photometric_bands_respects_y_bounds(mock_fig):
+def test_add_photometric_bands_correct_x_bounds(mock_fig):
     """
-    The y-coordinates of the filled polygons must use the provided ymin/ymax.
+    The x0/x1 limits of each vrect must match the known band boundaries.
     """
-    ymin, ymax = -2.5, 3.5
-    row, col = 2, 3
+    vp.add_photometric_bands(mock_fig, xaxis_id="x2", yaxis_id="y2")
 
-    vp.add_photometric_bands(mock_fig, ymin, ymax, row, col)
-
-    # Check that each call uses [ymin, ymin, ymax, ymax, ymin]
-    for call in mock_fig.add_trace.call_args_list:
-        s = call[0][0]
-        y = list(s.y)
-        assert y == [ymin, ymin, ymax, ymax, ymin]
+    expected = [(3.2, 4.1), (4.5, 5.0), (8.0, 13.0)]
+    actual = [
+        (call[1]["x0"], call[1]["x1"]) for call in mock_fig.add_shape.call_args_list
+    ]
+    assert actual == expected
 
 
 def test_get_subplot_axes_returns_expected_tuple(mock_fig):
@@ -293,37 +278,34 @@ def test_plot_spectrum_adds_flux_traces(mock_fig):
     result = vp.plot_spectrum(mock_fig, data)
     assert result is True
 
-    # Three photometric bands + two flux traces appended
+    # Two flux traces appended (bands use add_shape, not add_trace)
     assert hasattr(mock_fig, "_added_traces")
-    assert len(mock_fig._added_traces) == 5
-    mock_fig.add_annotation.assert_not_called()
+    assert len(mock_fig._added_traces) == 2
+    assert mock_fig.add_shape.call_count == 3
+    # 3 band-label annotations ("NO FLUX DATA" not called)
+    assert mock_fig.add_annotation.call_count == 3
+    annotation_texts = [
+        call[1]["text"] for call in mock_fig.add_annotation.call_args_list
+    ]
+    assert all("NO FLUX DATA" not in t for t in annotation_texts)
 
-    band_traces = mock_fig._added_traces[:3]
-    for trace, row, col in band_traces:
-        assert isinstance(trace, go.Scatter)
-        assert row == 2
-        assert col == 1
-        y_vals = list(trace.y)
-        assert y_vals[0] == y_vals[1] == min(flux_b.min(), flux_a.min())
-        assert y_vals[2] == y_vals[3] == max(flux_b.max(), flux_a.max())
-        assert y_vals[4] == y_vals[0]
-
-    flux_traces = mock_fig._added_traces[3:]
-    assert len(flux_traces) == 2
-
-    names = {trace.name for trace, _, _ in flux_traces}
+    names = {trace.name for trace, _, _ in mock_fig._added_traces}
     assert names == {"UT1-STA1", "UT2-STA2"}
 
-    for trace, row, col in flux_traces:
+    for trace, row, col in mock_fig._added_traces:
         assert isinstance(trace, go.Scatter)
         assert row == 2
         assert col == 1
+    trace = mock_fig._added_traces[-1][0]
     assert np.allclose(np.array(trace.x), wl * 1e6)
 
 
 def test_plot_spectrum_returns_false_when_flux_missing(mock_fig):
     """
     If FLUX data is absent, plot_spectrum should skip plotting and return False.
+    A Scatter text trace (NO FLUX DATA) is still added at (mid_wl, 0.5); xaxis
+    keeps the real wl_range (synced with visibility plots); yaxis is fixed [0,1]
+    so the text is always vertically centred.
     """
     wl = np.array([3.0, 3.5, 4.0])
     data = {
@@ -336,14 +318,50 @@ def test_plot_spectrum_returns_false_when_flux_missing(mock_fig):
     result = vp.plot_spectrum(mock_fig, data)
 
     assert result is False
-    assert not hasattr(mock_fig, "_added_traces")
 
-    mock_fig.add_trace.assert_not_called()
-    mock_fig.update_xaxes.assert_not_called()
-    mock_fig.update_yaxes.assert_not_called()
-    mock_fig.add_annotation.assert_called_once()
-    _, annot_kwargs = mock_fig.add_annotation.call_args
-    assert annot_kwargs["text"] == "<b>NO FLUX DATA</b>"
+    mock_fig.add_trace.assert_called_once()
+    trace_args = mock_fig.add_trace.call_args
+    trace = trace_args.args[0]
+    assert isinstance(trace, go.Scatter)
+    assert trace.mode == "text"
+    assert "NO FLUX DATA" in trace.text[0]
+    # x = mid-wavelength (keeps xaxis2 synced), y = 0.5 (vertically centred)
+    expected_mid = float((wl.min() + wl.max()) / 2) * 1e6
+    assert trace.x[0] == pytest.approx(expected_mid)
+    assert trace.y[0] == 0.5
+    # xaxis range = wl_range; yaxis range = [0, 1]
+    mock_fig.update_xaxes.assert_called_once()
+    mock_fig.update_yaxes.assert_called_once()
+    _, xkw = mock_fig.update_xaxes.call_args
+    _, ykw = mock_fig.update_yaxes.call_args
+    assert xkw["range"] == pytest.approx([wl.min() * 1e6, wl.max() * 1e6])
+    assert ykw["range"] == [0, 1]
+
+
+def test_plot_spectrum_n_band_no_flux_uses_flux_ylabel(mock_fig):
+    """
+    When band is N and flux is absent, the spectrum ylabel should be
+    'Flux (arbitrary units)'; xaxis keeps wl_range (not [0,1]); yaxis [0,1].
+    """
+    wl = np.array([8.0, 10.0, 13.0])
+    data = {
+        "BAND": "N",
+        "WLEN": wl,
+        "STA_INDEX": [1, 2],
+        "STA_NAME": ["STA1", "STA2"],
+        "TEL_NAME": ["UT1", "UT2"],
+    }
+
+    result = vp.plot_spectrum(mock_fig, data)
+
+    assert result is False
+    mock_fig.update_xaxes.assert_called_once()
+    mock_fig.update_yaxes.assert_called_once()
+    _, xkw = mock_fig.update_xaxes.call_args
+    _, ykw = mock_fig.update_yaxes.call_args
+    assert xkw["range"] == pytest.approx([wl.min() * 1e6, wl.max() * 1e6])
+    assert ykw["range"] == [0, 1]
+    assert ykw["title"] == "Flux (arbitrary units)"
 
 
 def test_make_vltiplot_mini_returns_lengths_and_layout(mock_fig):
@@ -447,7 +465,7 @@ def test_make_uvplot_adds_symmetrical_points(mock_fig):
         if "title" in kwargs
     )
     assert y_kwargs["title"] == "V (m)"
-    assert y_kwargs["domain"] == [0.6, 0.82]
+    assert y_kwargs["domain"] == [0.52, 0.8]
 
 
 def test_plot_obs_groups_single_group_with_errors(mock_fig):
