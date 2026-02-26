@@ -1340,7 +1340,7 @@ def _add_bcd_all_traces(
     )
 
     quality: dict = {}
-    quality["seeing"] = round(data["SEEING"] * u.arcsec, 2)
+    quality["seeing"] = round(data["SEEING"], 2) * u.arcsec
     quality["tau0"] = round(data["TAU0"] * 1e3, 2) * u.ms
     quality["wind_speed"] = data["HDR"].get("ESO ISS AMBI WINDSP", np.nan) * u.m / u.s
     quality["humidity"] = data["HDR"].get("ESO ISS AMBI RHUM", np.nan) * u.percent
