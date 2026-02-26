@@ -1,4 +1,4 @@
-# MATISSE CLI Quick Tutorial (Simple Workflow)
+# MATISSE CLI Quick Tutorial (Simple Workflow: WORK IN PROGRESS)
 
 This tutorial explains how to reduce MATISSE data with the `matisse` command-line interface.
 
