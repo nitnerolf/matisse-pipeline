@@ -682,3 +682,25 @@ def test_show_plot_writes_html(tmp_path):
     content = outfile.read_text(encoding="utf-8")
     assert content.startswith("<html>")
     assert "plotly" in content.lower()
+
+
+# ---------- _extract_bcd_from_filename ----------
+
+
+@pytest.mark.parametrize(
+    "stem, expected",
+    [
+        ("fake_calib_IR-LM_LOW_IN_IN_noChop_noBCD", "IN_IN"),
+        ("fake_calib_IR-LM_LOW_OUT_OUT_noChop_noBCD", "OUT_OUT"),
+        ("fake_calib_IR-LM_LOW_IN_OUT_noChop_noBCD", "IN_OUT"),
+        ("fake_calib_IR-LM_LOW_OUT_IN_noChop_noBCD", "OUT_IN"),
+        # Edge: multiple matches → last one wins
+        ("fake_IN_OUT_calib_IR-LM_LOW_OUT_OUT_noChop_noBCD", "OUT_OUT"),
+        # No BCD pattern at all
+        ("some_random_file", None),
+        # Case insensitivity
+        ("fake_in_in_noBCD", "IN_IN"),
+    ],
+)
+def test_extract_bcd_from_filename(stem: str, expected: str | None):
+    assert vp._extract_bcd_from_filename(stem) == expected

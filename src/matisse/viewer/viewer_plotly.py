@@ -1,4 +1,5 @@
 import logging
+import re
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -1505,6 +1506,31 @@ def _detect_chop_from_header(hdr: Any) -> str:
     return "NOCHOP" if chop == "F" else "CHOP"
 
 
+_BCD_FILENAME_RE = re.compile(
+    r"_(IN|OUT)_(IN|OUT)",
+    re.IGNORECASE,
+)
+
+
+def _extract_bcd_from_filename(stem: str) -> str | None:
+    """Return the **original** BCD key embedded in a filename, if present.
+
+    Filenames produced by `remove_bcd` keep the original BCD mode in their
+    stem (e.g. ``fake_calib_IR-LM_LOW_IN_IN_noChop_noBCD``).  When the file
+    has the ``_noBCD`` suffix the FITS header is reset to OUT/OUT, so we
+    fall back to the filename to recover the true BCD state.
+
+    Returns ``None`` when no BCD pattern is found.
+    """
+    matches = _BCD_FILENAME_RE.findall(stem)
+    if not matches:
+        return None
+    # Take the *last* match – earlier parts of the name may contain
+    # unrelated IN/OUT tokens (e.g. band identifiers).
+    bcd1, bcd2 = matches[-1]
+    return f"{bcd1.upper()}_{bcd2.upper()}"
+
+
 def _bcd_button_sort_key(bcd_key: str) -> tuple[int, str]:
     """Sort BCD keys as OUT/OUT, IN/IN, IN/OUT, OUT/IN, then others."""
     upper = bcd_key.upper()
@@ -1558,7 +1584,15 @@ def find_siblings_all_bands(file_path: Path | str) -> dict[str, dict[str, Path]]
 
         bcd1 = hdr.get("HIERARCH ESO INS BCD1 NAME", "")
         bcd2 = hdr.get("HIERARCH ESO INS BCD2 NAME", "")
-        if bcd1 and bcd2:
+
+        # For _noBCD files the header is always reset to OUT/OUT
+        # regardless of the original BCD state.  Prefer the filename.
+        fname_bcd = _extract_bcd_from_filename(fits_file.stem)
+        is_nobcd = "_noBCD" in fits_file.stem
+
+        if is_nobcd and fname_bcd:
+            base_bcd_key = fname_bcd
+        elif bcd1 and bcd2:
             base_bcd_key = f"{bcd1}_{bcd2}"
         else:
             # No BCD metadata (e.g. calibrated files) → use filename stem so
