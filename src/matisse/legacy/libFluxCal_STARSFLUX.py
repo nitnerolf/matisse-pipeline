@@ -30,7 +30,7 @@
 #TODO: calculate uncertainties
 #       partly implemented
 #       caveats: uncertainty in the calibrator spectrum is not taken into account
-#                uncertainty in calibrator diameter is not taken into account
+#                
 #TODO: treat if the cal database cannot be opened
 # treat if there is no matching source in the database: DONE
 #TODO: FIX: some dec values are NULL in vBoekeldatabase 
@@ -55,6 +55,7 @@ import scipy.stats
 import glob
 import shutil
 import sys
+from astroquery.vizier import Vizier
 
 #Path to the skycal_cli executable
 #skycalc_cli_cmd = '/home/amatter/.local/bin/skycalc_cli'
@@ -62,107 +63,129 @@ skycalc_cli_cmd = str(shutil.which('skycalc_cli'))
 
 # match_radius [arcsec]
 # ra, dec [degree]
-def get_spectrum_caldb(cal_database_path,cal_name,out_lst,ra=np.nan,dec=np.nan,match_radius=15.0,band='L'):
 
-    newcat=False
+def get_spectrum_cal_STARSFLUX(cal_name,out_lst,ra=np.nan,dec=np.nan,match_radius=15.0):
     print('Checking if '+cal_name+' is in MDFC and STARSFLUX')#
+    c_cal = SkyCoord(ra*u.deg, dec*u.deg, frame='icrs')       
     result = Vizier.query_object(cal_name, catalog='II/361')
-    if len(result)!=0:
-        print(result[0])
+    #result = Vizier.query_region(c_cal, catalog='II/361', radius=str(match_radius)+"s")
+    print(result)
+    cal_name_vizier=result[0]['Name'][0].replace(' ','')
+    cal_name_vizier=cal_name_vizier.replace('*','')
+    print(cal_name_vizier)
+    print('https://home.strw.leidenuniv.nl/~gamez/catalog/fitsfiles/Aug20'+cal_name_vizier+'.fits')
+    #extract calibrator model spectrum
+    hdu=fits.open('https://home.strw.leidenuniv.nl/~gamez/catalog/fitsfiles/Aug20'+cal_name_vizier+'.fits')
+    wav_cal = hdu[3].data['Wavelength'] #um
+    spectrum_cal = hdu[0].data
+    diam_cal=hdu[0].header['ANGRMAS']
+    diam_err_cal=diam_cal*0.1
+    print('*******calibrator in MDFC and STARSFLUX!!!****')
+    newcat=True
+    out_lst += [cal_name_vizier,diam_cal,diam_err_cal,
+    wav_cal,spectrum_cal,'https://home.strw.leidenuniv.nl/~gamez/catalog/fitsfiles/Aug20'+cal_name_vizier+'.fits',3,
+    result[0]['RAJ2000'][0],result[0]['DEJ2000'][0]]
+    return True
+
+    try:
+        print('Checking if '+cal_name+' is in MDFC and STARSFLUX')#
+        c_cal = SkyCoord(ra*u.deg, dec*u.deg, frame='icrs')       
+        result = Vizier.query_object(cal_name, catalog='II/361')
+        #result = Vizier.query_region(c_cal, catalog='II/361', radius=str(match_radius)+"s")
+        print(result)
         cal_name_vizier=result[0]['Name'][0].replace(' ','')
         cal_name_vizier=cal_name_vizier.replace('*','')
-        try:
-            #extract calibrator model spectrum
-            print(cal_name_vizier)
-            hdu=fits.open('https://home.strw.leidenuniv.nl/~gamez/catalog/fitsfiles/Aug20'+cal_name_vizier+'.fits')
-            wav_cal = hdu[3].data['Wavelength'] #um
-            spectrum_cal = hdu[0].data
-            diam_cal=hdu[0].header['ANGRMAS']
-            diam_err_cal=diam_cal*0.01
-            print('*******calibrator in MDFC and STARSFLUX!!!****')
-            newcat=True
-            out_lst += [cal_name_vizier,diam_cal,diam_err_cal,
-            wav_cal,spectrum_cal,'https://home.strw.leidenuniv.nl/~gamez/catalog/fitsfiles/Aug20'+cal_name_vizier+'.fits',3,
-            result[0]['RAJ2000'][0],result[0]['DEJ2000'][0]]
-            return True
-        except:
-            print('Calibrator in MDFC but not in STARSFLUX')
-    else:
-        print('Calibrator neither in MDFC nor in STARSFLUX')
-        print('Querying the other synthetic spectra databases')
+        print(cal_name_vizier)
+        print('https://home.strw.leidenuniv.nl/~gamez/catalog/fitsfiles/Aug20'+cal_name_vizier+'.fits')
+        #extract calibrator model spectrum
+        hdu=fits.open('https://home.strw.leidenuniv.nl/~gamez/catalog/fitsfiles/Aug20'+cal_name_vizier+'.fits')
+        wav_cal = hdu[3].data['Wavelength'] #um
+        spectrum_cal = hdu[0].data
+        diam_cal=hdu[0].header['ANGRMAS']
+        diam_err_cal=diam_cal*0.1
+        print('*******calibrator in MDFC and STARSFLUX!!!****')
+        newcat=True
+        out_lst += [cal_name_vizier,diam_cal,diam_err_cal,
+        wav_cal,spectrum_cal,'https://home.strw.leidenuniv.nl/~gamez/catalog/fitsfiles/Aug20'+cal_name_vizier+'.fits',3,
+        result[0]['RAJ2000'][0],result[0]['DEJ2000'][0]]
+        return True
+    except:        
+        print('Calibrator not in STARSFLUX')
+        return False
 
-        c_cal = SkyCoord(ra*u.deg, dec*u.deg, frame='icrs')
-        caldb = fits.open(cal_database_path)
-        caldb_file = os.path.basename(cal_database_path)
-        if 'vBoekelDatabase' in caldb_file:
-            if 'fitsold' in caldb_file:
-                cal_name_lst = caldb[8].data['NAME']
-                cal_ra_lst = caldb[8].data['RAEPP']
-                cal_dec_lst = caldb[8].data['DECEPP']
-            else: 
-                cal_name_lst = caldb['SOURCES'].data['NAME']
-                cal_ra_lst = caldb['SOURCES'].data['RAEPP']
-                cal_dec_lst = caldb['SOURCES'].data['DECEPP']
-        elif 'calib_spec_db' in caldb_file:
-            cal_name_lst = caldb['SOURCES'].data['name']
-            cal_ra_lst = caldb['SOURCES'].data['ra']
-            cal_dec_lst = caldb['SOURCES'].data['dec']
-        else:
+def get_spectrum_caldb(cal_database_path,cal_name,out_lst,ra=np.nan,dec=np.nan,match_radius=15.0,band='L'):
+    c_cal = SkyCoord(ra*u.deg, dec*u.deg, frame='icrs')
+    caldb = fits.open(cal_database_path)
+    caldb_file = os.path.basename(cal_database_path)
+    if 'vBoekelDatabase' in caldb_file:
+        if 'fitsold' in caldb_file:
+            cal_name_lst = caldb[8].data['NAME']
+            cal_ra_lst = caldb[8].data['RAEPP']
+            cal_dec_lst = caldb[8].data['DECEPP']
+        else: 
             cal_name_lst = caldb['SOURCES'].data['NAME']
             cal_ra_lst = caldb['SOURCES'].data['RAEPP']
             cal_dec_lst = caldb['SOURCES'].data['DECEPP']
+    elif 'calib_spec_db' in caldb_file:
+        cal_name_lst = caldb['SOURCES'].data['name']
+        cal_ra_lst = caldb['SOURCES'].data['ra']
+        cal_dec_lst = caldb['SOURCES'].data['dec']
+    else:
+        cal_name_lst = caldb['SOURCES'].data['NAME']
+        cal_ra_lst = caldb['SOURCES'].data['RAEPP']
+        cal_dec_lst = caldb['SOURCES'].data['DECEPP']
 
-        c_lst = SkyCoord(cal_ra_lst * u.deg, cal_dec_lst * u.deg, frame='icrs')
+    c_lst = SkyCoord(cal_ra_lst * u.deg, cal_dec_lst * u.deg, frame='icrs')
 
-        # search for the calibrator in the calibrator database
-        sep = c_cal.separation(c_lst)
-        min_sep_idx = np.nanargmin(sep)
-        min_sep = sep[min_sep_idx]
-        if (min_sep < match_radius*u.deg/3600.0):
-            #match
-            print('Calibrator found in the database '+caldb_file+': '+cal_name_lst[min_sep_idx]+', separation: %.2f arcsec'%(3600.0*min_sep.value))
-            #get calibrator diameter
-            if 'vBoekelDatabase' in caldb_file:
-                offset = 9
-                if 'fitsold' in caldb_file:
-                    diam_cal =  1000.0*caldb[-2].data['DIAMETER'][min_sep_idx] #mas
-                    diam_err_cal = 1000.0*caldb[-2].data['DIAMETER_ERR'][min_sep_idx] #mas
-                else:
-                    diam_cal =  1000.0*caldb['DIAMETERS'].data['DIAMETER'][min_sep_idx] #mas
-                    diam_err_cal = 1000.0*caldb['DIAMETERS'].data['DIAMETER_ERR'][min_sep_idx] #mas
-            elif 'calib_spec_db' in caldb_file:
-                offset = 2
-                if 'L' in band:
-                    diam_cal = caldb['SOURCES'].data['UDDL_est'][min_sep_idx] #mas
-                    diam_err_cal = caldb['SOURCES'].data['e_diam_est'][min_sep_idx] #mas
-                if 'N' in band:
-                    diam_cal = caldb['SOURCES'].data['UDDN_est'][min_sep_idx] #mas
-                    diam_err_cal = caldb['SOURCES'].data['e_diam_est'][min_sep_idx] #mas
-                if math.isnan(diam_cal):
-                    diam_cal = caldb['SOURCES'].data['diam_midi'][min_sep_idx] #mas
-                    diam_err_cal = caldb['SOURCES'].data['e_diam_midi'][min_sep_idx] #mas
-                if math.isnan(diam_cal):
-                    diam_cal = caldb['SOURCES'].data['diam_cohen'][min_sep_idx] #mas
-                    diam_err_cal = caldb['SOURCES'].data['e_diam_cohen'][min_sep_idx] #mas
-                if math.isnan(diam_cal):
-                    diam_cal = caldb['SOURCES'].data['UDD_meas'][min_sep_idx] #mas
-                    diam_err_cal = caldb['SOURCES'].data['e_diam_meas'][min_sep_idx] #mas
-                if math.isnan(diam_cal):
-                    diam_cal = caldb['SOURCES'].data['diam_gaia'][min_sep_idx] #mas
-                    diam_err_cal = diam_cal*0.1 #mas 
-            #extract calibrator model spectrum
-            wav_cal = caldb[min_sep_idx+offset].data['WAVELENGTH'] #m
-            spectrum_cal = caldb[min_sep_idx+offset].data['FLUX']
-            out_lst += [caldb[min_sep_idx+offset].header['NAME'],diam_cal,diam_err_cal,
-                wav_cal,spectrum_cal,caldb_file,3600.0*min_sep.value,
-                cal_ra_lst[min_sep_idx],cal_dec_lst[min_sep_idx]]
-            caldb.close()
-            return True
-        else:
-            print('Calibrator not found in '+caldb_file)
-            print('Closest match: '+cal_name_lst[min_sep_idx]+', separation: %.2f arcsec'%(3600.0*min_sep.value))
-            caldb.close()
-            return False
+    # search for the calibrator in the calibrator database
+    sep = c_cal.separation(c_lst)
+    min_sep_idx = np.nanargmin(sep)
+    min_sep = sep[min_sep_idx]
+    if (min_sep.value < match_radius/3600.0):
+        #match
+        print('Calibrator found in the database '+caldb_file+': '+cal_name_lst[min_sep_idx]+', separation: %.2f arcsec'%(3600.0*min_sep.value))
+        #get calibrator diameter
+        if 'vBoekelDatabase' in caldb_file:
+            offset = 9
+            if 'fitsold' in caldb_file:
+                diam_cal =  1000.0*caldb[-2].data['DIAMETER'][min_sep_idx] #mas
+                diam_err_cal = 1000.0*caldb[-2].data['DIAMETER_ERR'][min_sep_idx] #mas
+            else:
+                diam_cal =  1000.0*caldb['DIAMETERS'].data['DIAMETER'][min_sep_idx] #mas
+                diam_err_cal = 1000.0*caldb['DIAMETERS'].data['DIAMETER_ERR'][min_sep_idx] #mas
+        elif 'calib_spec_db' in caldb_file:
+            offset = 2
+            if 'L' in band:
+                diam_cal = caldb['SOURCES'].data['UDDL_est'][min_sep_idx] #mas
+                diam_err_cal = caldb['SOURCES'].data['e_diam_est'][min_sep_idx] #mas
+            if 'N' in band:
+                diam_cal = caldb['SOURCES'].data['UDDN_est'][min_sep_idx] #mas
+                diam_err_cal = caldb['SOURCES'].data['e_diam_est'][min_sep_idx] #mas
+            if math.isnan(diam_cal):
+                diam_cal = caldb['SOURCES'].data['diam_midi'][min_sep_idx] #mas
+                diam_err_cal = caldb['SOURCES'].data['e_diam_midi'][min_sep_idx] #mas
+            if math.isnan(diam_cal):
+                diam_cal = caldb['SOURCES'].data['diam_cohen'][min_sep_idx] #mas
+                diam_err_cal = caldb['SOURCES'].data['e_diam_cohen'][min_sep_idx] #mas
+            if math.isnan(diam_cal):
+                diam_cal = caldb['SOURCES'].data['UDD_meas'][min_sep_idx] #mas
+                diam_err_cal = caldb['SOURCES'].data['e_diam_meas'][min_sep_idx] #mas
+            if math.isnan(diam_cal):
+                diam_cal = caldb['SOURCES'].data['diam_gaia'][min_sep_idx] #mas
+                diam_err_cal = diam_cal*0.1 #mas 
+        #extract calibrator model spectrum
+        wav_cal = caldb[min_sep_idx+offset].data['WAVELENGTH'] #m
+        spectrum_cal = caldb[min_sep_idx+offset].data['FLUX']
+        out_lst += [caldb[min_sep_idx+offset].header['NAME'],diam_cal,diam_err_cal,
+            wav_cal,spectrum_cal,caldb_file,3600.0*min_sep.value,
+            cal_ra_lst[min_sep_idx],cal_dec_lst[min_sep_idx]]
+        caldb.close()
+        return True
+    else:
+        print('Calibrator not found in '+caldb_file)
+        print('Closest match: '+cal_name_lst[min_sep_idx]+', separation: %.2f arcsec'%(3600.0*min_sep.value))
+        caldb.close()
+        return False
 
 def plot_spec(cal_name,cal_database_path,fig_dir ='.',ra=np.nan,dec=np.nan,match_radius=15.0,wl_lim=(np.nan,np.nan),xlog=False,ylog=False):
     if math.isnan(ra):
@@ -173,7 +196,9 @@ def plot_spec(cal_name,cal_database_path,fig_dir ='.',ra=np.nan,dec=np.nan,match
         ra = res['RA_d'][0]
         dec = res['DEC_d'][0] 
     out_lst =[]
-    match = get_spectrum_caldb(cal_database_path,cal_name,out_lst,ra=ra,dec=dec,match_radius=15.0,band='L')
+    match = get_spectrum_cal_STARSFLUX(cal_name,out_lst,ra=ra_cal,dec=dec_cal,match_radius=match_radius)
+    if match == False:
+        match = get_spectrum_caldb(cal_database_path,cal_name,out_lst,ra=ra,dec=dec,match_radius=match_radius,band='L')
     if match:
         cal_name_db,diam_cal,diam_err_cal,wav_cal,spectrum_cal,caldb_file,min_sep_arcsec,ra_cal_db,dec_cal_db = out_lst
         fig, ((ax1)) = plt.subplots(1, 1, sharey=False, sharex=False, figsize=(5, 5))
@@ -210,7 +235,7 @@ def plot_skycalc_output(fpath_in,figpath_out,airmass,pwv):
     
 #mode: 'flux','corrflux','both'
 def fluxcal(inputfile_sci, inputfile_cal, outputfile, dir_caldatabases, 
-    mode='flux',output_fig_dir='',match_radius=25.0,do_airmass_correction=True):
+    mode='flux',output_fig_dir='',match_radius=15.0,do_airmass_correction=True):
 
     # create the output oifits file
     copyfile(inputfile_sci, outputfile)
@@ -302,16 +327,14 @@ def fluxcal(inputfile_sci, inputfile_cal, outputfile, dir_caldatabases,
         plot_skycalc_output(fname_skycalc_out_cal,figpath_out,airmass_cal,pwv_cal)
         
     # open the calibrator database which includes the spectra of calibrators
-    match = False
-
     out_lst = []
-    match = False
-    i = 0
-    #for cal_database_path in cal_database_paths:
-    while (match == False and i < len(cal_database_paths)):
-        print('cal_database_paths = ',cal_database_paths)
-        match = get_spectrum_caldb(cal_database_paths[i],cal_name,out_lst,ra=ra_cal,dec=dec_cal,match_radius=match_radius,band=band)
-        i = i+1
+    match = get_spectrum_cal_STARSFLUX(cal_name,out_lst,ra=ra_cal,dec=dec_cal,match_radius=match_radius)
+
+    if match == False:
+        i = 0
+        while (match == False and i < len(cal_database_paths)):
+            match = get_spectrum_caldb(cal_database_paths[i],cal_name,out_lst,ra=ra_cal,dec=dec_cal,match_radius=match_radius,band=band)
+            i = i+1
   
     if match == True:
         cal_name_db,diam_cal,diam_err_cal,wav_cal_model,spectrum_cal,caldb_file,min_sep_arcsec,ra_cal_db,dec_cal_db = out_lst
@@ -324,7 +347,7 @@ def fluxcal(inputfile_sci, inputfile_cal, outputfile, dir_caldatabases,
                 outhdul.close()
                 os.remove(outputfile)
                 return 4
-        print('Diameter = %.1f +/- %.1f mas (%s)'%(diam_cal,diam_err_cal,cal_name_db))
+        print('Diameter = %.2f +/- %.2f mas (%s)'%(diam_cal,diam_err_cal,cal_name_db))
         
         if 'calib_spec' in caldb_file:
             wav_cal_model = np.flip(wav_cal_model)
@@ -567,9 +590,9 @@ def fluxcal(inputfile_sci, inputfile_cal, outputfile, dir_caldatabases,
             z=math.pi*diam_cal_rad*spatial_frequency
             vis_cal = 2*j1(z) / z
             vis_err_cal = vis_cal * (diam_err_cal_rad/diam_cal_rad)*np.abs(z*jv(2,z)/j1(z))
-            # plt.figure()
-            # plt.plot(wav_cal, vis_cal, '-b')
-            # plt.show()
+            #plt.figure()
+            #plt.plot(wav_cal, vis_err_cal/vis_cal, '-b')
+            #plt.show()
             if do_airmass_correction:
                 #calculate correlation between the raw spectrum, and the atmospheric transmission spectrum
                 #shift_max = int(0.025*len(trans_cal_final))
