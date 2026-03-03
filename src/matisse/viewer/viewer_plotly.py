@@ -92,7 +92,7 @@ sta_pos_list = np.array(
     ]
 )
 
-telescope_colors = ["#A2C8E8", "#F8C8DC", "#FBE8A6", "#C7E5B4"]
+TEL_COLORS = ["#A2C8E8", "#F8C8DC", "#FBE8A6", "#C7E5B4"]
 baseline_colors = ["#9B59B6", "#7C889B", "#F4D03F", "#FF6F61", "#2ECC71", "#1E90FF"]
 cp_colors = ["#FAA050", "#B8AC6D", "#BE7C7E", "#26AEB8"]
 
@@ -328,7 +328,7 @@ def add_photometric_bands(fig, xaxis_id: str = "x2", yaxis_id: str = "y2") -> No
             y0=0,
             y1=1,
             fillcolor=color,
-            opacity=0.05,
+            opacity=0.2,
             layer="below",
             line_width=0,
             xref=xaxis_id,
@@ -413,6 +413,11 @@ def make_vltiplot_mini(
             )
 
     if len(tels) > 0:
+        if len(tels) == 16:
+            custom_tel_colors = TEL_COLORS * 4
+        else:
+            custom_tel_colors = TEL_COLORS
+
         for i in range(len(tels)):
             tel = np.where(sta_name_list == tels[i])
             telx = sta_pos_list[tel, 2]
@@ -426,7 +431,7 @@ def make_vltiplot_mini(
                     # textposition="middle left",
                     showlegend=False,
                     name=f"{tels[i]}",
-                    marker=dict(size=11, color=telescope_colors[i]),
+                    marker=dict(size=11, color=custom_tel_colors[i]),
                     # textfont=dict(size=12, color="black"),
                     text=f"{tels[i]}",
                     hoverinfo="text",
@@ -736,19 +741,32 @@ def plot_spectrum(fig, data, flux_range: list[float] | None = None):
     if not all_flux_values:
         return _annotate_missing_flux()
 
+    if table_flux.shape[0] > 4:
+        custom_tel_colors = TEL_COLORS * (table_flux.shape[0] // 4)
+    else:
+        custom_tel_colors = TEL_COLORS
+
+    included_tel_names_in_legend = []
     for i in range(len(table_flux)):
         flux = np.ascontiguousarray(table_flux[i], dtype=np.float64)
         name_label = f"{ref_telescope[sta_index[i]]}-{ref_station[sta_index[i]]}"
+
+        if name_label not in included_tel_names_in_legend:
+            included_tel_names_in_legend.append(name_label)
+            show_in_legend = True
+        else:
+            show_in_legend = False  # hide duplicate legend entries
+
         fig.add_trace(
             go.Scatter(
                 x=lam,
                 y=flux,
                 mode="lines",
                 name=name_label,
-                line=dict(color=telescope_colors[i]),
+                line=dict(color=custom_tel_colors[i]),
                 legendgroup="spectre",
                 legendgrouptitle_text="Telescopes",
-                showlegend=True,
+                showlegend=show_in_legend,
             ),
             row=2,
             col=1,
