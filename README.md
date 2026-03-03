@@ -84,6 +84,12 @@ uv run mypy src/
 
 ---
 
+## ⚡ Quick Start
+
+A complete step-by-step guide is available here [docs/workflow-tutorial.md](https://github.com/Matisse-Consortium/matisse-pipeline/tree/main/docs/workflow-tutorial.md)
+
+---
+
 ## 🧰 Legacy Scripts Compatibility
 
 The original MATISSE reduction tools (`mat_autoPipeline.py`, etc.) are preserved in the `legacy/` folder for full backward compatibility.

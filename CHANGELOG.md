@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.4.0 (2026-03-03)
+
+### Feat
+
+- Add interactive mode of show in the CLI (tested) and refactor viewer plotting functions
+
+### Fix
+
+- Refactor custom telescope color
+- Adjust custom telescope colors handling for variable telescope counts
+- Update telescope color handling in case of multiple exposure
+- Implement BCD extraction from filename and add corresponding tests
+- correct unit conversion for seeing quality metric
+- update CI workflow to correctly ignore markdown files and add non-doc change detection
+
 ## v0.3.0 (2026-02-24)
 
 ### Feat
