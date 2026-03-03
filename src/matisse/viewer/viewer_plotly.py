@@ -413,8 +413,8 @@ def make_vltiplot_mini(
             )
 
     if len(tels) > 0:
-        if len(tels) == 16:
-            custom_tel_colors = TEL_COLORS * 4
+        if len(tels) > 4:
+            custom_tel_colors = TEL_COLORS * (len(tels) // 4)
         else:
             custom_tel_colors = TEL_COLORS
 
