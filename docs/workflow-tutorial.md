@@ -37,7 +37,7 @@ Use this order:
 ### Step A: Reduce raw files
 
 ```bash
-matisse reduce --data-dir /data/raw_night --result-dir /data/reduced --nbcore 4 --max-iter 2
+matisse reduce --data-dir /data/raw_night --result-dir /data/reduced --nbcore 4 --max-iter 4
 ```
 
 What it does:
@@ -62,13 +62,13 @@ Important options:
 Typical output:
 
 - `/data/reduced/Iter1/...`
-- `/data/reduced/Iter2/...`
+- `/data/reduced/Iter4/...`
 - recipe logs and reduced FITS inside `*.rb/` block folders.
 
 ### Step B: Format reduced outputs into OIFITS folder
 
 ```bash
-matisse format /data/reduced/Iter2
+matisse format /data/reduced/Iter4
 ```
 
 What it does:
@@ -80,12 +80,12 @@ What it does:
 Output folder name:
 
 - `<input_name>_OIFITS` created in your current working directory.
-- Example: if input is `/data/reduced/Iter2`, output is `./Iter2_OIFITS`.
+- Example: if input is `/data/reduced/Iter4`, output is `./Iter4_OIFITS`.
 
 ### Step C: Calibrate OIFITS
 
 ```bash
-matisse calibrate --data-dir ./Iter2_OIFITS --timespan 0.04 --bands LM --bands N
+matisse calibrate --data-dir ./Iter4_OIFITS --timespan 0.04 --bands LM --bands N
 ```
 
 What it does:
@@ -124,36 +124,38 @@ Main options:
 ### Apply BCD corrections
 
 ```bash
-matisse bcd apply /data/Iter2_OIFITS /data/mn2025_results --merge
+matisse bcd apply /data/Iter4_OIFITS /data/mn2025_results --merge
 ```
 
 ### Other BCD tools
 
-- Remove BCD effects: `matisse bcd remove /data/Iter2_OIFITS --band LM`
-- Compare BCD modes: `matisse bcd compare /data/Iter2_OIFITS`
-- Merge BCD modes only: `matisse bcd merge /data/Iter2_OIFITS`
+- Remove BCD effects: `matisse bcd remove /data/Iter4_OIFITS --band LM`
+- Compare BCD modes: `matisse bcd compare /data/Iter4_OIFITS`
+- Merge BCD modes only: `matisse bcd merge /data/Iter4_OIFITS`
 
 ---
 
 ## 5. Visual Inspection
 
-Display one OIFITS file:
+You can inspect your OIFITS files in interactive mode to check the different BCD positions, bands, and/or chopping modes corresponding to the same `TPL start`:
 
 ```bash
-matisse show /data/Iter2_OIFITS/my_file.fits
+matisse show /data/Iter4_OIFITS/my_file.fits -i
 ```
 
-Save figure:
+Or simply display one with:
 
 ```bash
-matisse show /data/Iter2_OIFITS/my_file.fits --save summary.png
+matisse show /data/Iter4_OIFITS/my_file.fits
 ```
 
-Interactive multi-BCD view (same TPL START):
+And save figure:
 
 ```bash
-matisse show /data/Iter2_OIFITS/my_file.fits --interactive
+matisse show /data/Iter4_OIFITS/my_file.fits --save summary.png
 ```
+
+> Note: as we use the Plotly viewer, the display requires a functional web browser (e.g.: safari, chromium, firefox, etc.). The option *save* can therefore be dependant of your system.
 
 ---
 
@@ -161,9 +163,9 @@ matisse show /data/Iter2_OIFITS/my_file.fits --interactive
 
 ```bash
 matisse doctor
-matisse reduce --data-dir /data/raw --result-dir /data/reduced --nbcore 4 --max-iter 2
-matisse format /data/reduced/Iter2
-matisse calibrate --data-dir ./Iter2_OIFITS --bands LM --bands N
+matisse reduce --data-dir /data/raw --result-dir /data/reduced --nbcore 4 --max-iter 4
+matisse format /data/reduced/Iter4
+matisse calibrate --data-dir ./Iter4_OIFITS --bands LM --bands N
 ```
 
-This is the shortest practical path to go from raw MATISSE FITS to calibrated OIFITS products.
+This is the shortest practical path to go from raw MATISSE FITS to calibrated OIFITS products. Additional steps can be achieved using the `bcd` sub-command, further explanation and tutorial will be provided soon.

@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.4.0 (2026-03-03)
+
+### Feat
+
+- Add interactive mode of show in the CLI (tested)
+
+### Fix
+
+- Update telescope color handling in case of multiple exposure
+- Implement BCD extraction from filename and add corresponding tests
+
 ## v0.3.0 (2026-02-24)
 
 ### Feat
