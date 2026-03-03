@@ -206,6 +206,12 @@ def bcd_dir() -> Path:
 
 
 @pytest.fixture(scope="session")
+def viewer_dir() -> Path:
+    """Return the path to the test viewer directory."""
+    return Path(__file__).parent / "data" / "test_dir_viewer"
+
+
+@pytest.fixture(scope="session")
 def real_obs_target(data_dir: Path) -> Path:
     """Return the path to the target real observation FITS file."""
     return data_dir / "MATIS_target_raw.fits"
