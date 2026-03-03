@@ -428,11 +428,9 @@ def make_vltiplot_mini(
                     y=[tely[0, 0]],
                     mode="markers",
                     zorder=3,
-                    # textposition="middle left",
                     showlegend=False,
                     name=f"{tels[i]}",
                     marker=dict(size=11, color=custom_tel_colors[i]),
-                    # textfont=dict(size=12, color="black"),
                     text=f"{tels[i]}",
                     hoverinfo="text",
                 ),
@@ -741,8 +739,8 @@ def plot_spectrum(fig, data, flux_range: list[float] | None = None):
     if not all_flux_values:
         return _annotate_missing_flux()
 
-    if table_flux.shape[0] > 4:
-        custom_tel_colors = TEL_COLORS * (table_flux.shape[0] // 4)
+    if len(table_flux) > 4:
+        custom_tel_colors = TEL_COLORS * (len(table_flux) // 4)
     else:
         custom_tel_colors = TEL_COLORS
 
