@@ -17,7 +17,8 @@ from astroquery.simbad import Simbad
 from numpy.polynomial.polynomial import polyval
 from astropy.convolution import Gaussian1DKernel,Box1DKernel,convolve
 import scipy.stats
-from libFluxCal import *
+#from libFluxCal import *
+from libFluxCal_STARSFLUX import *
 import argparse
 import sys
 import importlib
@@ -49,7 +50,7 @@ if __name__ == '__main__':
     #--------------------------------------------------------------------------
     parser.add_argument('--calname', default="",  \
     help='Name of the spectrophotometric calibrator (as indicated in the oifits file name). If empty, the closest calibrator in time will be used.')
-
+        
     #--------------------------------------------------------------------------
     parser.add_argument('--mode', default="flux", \
                         help='Type of MATISSE spectra you want to calibrate. "flux": total spectra or "corrflux": correlated spectra.')
@@ -72,12 +73,12 @@ if __name__ == '__main__':
         print("\n This routine can produce two types of calibrated oifits files depending on the selected mode (either 'flux' or 'corrflux':\n")
         print("\n - ***_calflux.fits: only total flux is calibrated (incoherently processed oifits file expected) and stored in the OI_FLUX table (FLUXDATA column).\n")
         print("\n - ***_calcorrflux.fits: only correlated fluxes are calibrated (coherently processed oifits file expected) and stored in the OI_VIS table (VISAMP column).\n")
-        print("\n Example of calibration of the total flux of a MATISSE science oifits files with a specified calibrator and an airmass correction in LM band:\n")
-        print(" mat_fluxCal.py dir --sciname='sci' --calname='cal' --mode='flux' --band='LM' --airmassCorr\n")
+        print("\n Example of calibration of the total flux of a MATISSE science oifits files with a specified calibrator and an airmass correction in LM band:\n") 
+        print(" mat_fluxCal.py dir --sciname='sci' --calname='cal' --mode='flux' --band='LM' --airmassCorr\n")       
         sys.exit(0)
 
     #-----------------------------------------
-    #Path to the calibrators spectra databases
+    #Path to the calibrators spectra databases 
     #-----------------------------------------
     #a=imp.find_module("libFluxCal")
     #dir_caldatabases=os.path.dirname(a[1])+'/calib_spec_databases'
@@ -99,7 +100,7 @@ if __name__ == '__main__':
                 hdu_f=fits.open(f)
                 catg_f=hdu_f[0].header['HIERARCH ESO PRO CATG']
                 if catg_f == 'CALIB_RAW_INT':
-                    calfiles.append(f)
+                    calfiles.append(f)                
         elif args.band == 'N':
             scifiles=glob.glob(args.dir_oifits+'*'+args.sciname+'*_IR-N*Chop*.fits')
             list_files=glob.glob(args.dir_oifits+'*_IR-N*Chop*.fits')
@@ -107,7 +108,7 @@ if __name__ == '__main__':
                 hdu_f=fits.open(f)
                 catg_f=hdu_f[0].header['HIERARCH ESO PRO CATG']
                 if catg_f == 'CALIB_RAW_INT':
-                    calfiles.append(f)
+                    calfiles.append(f)        
     else:
         args.dir_oifits = os.path.abspath(args.dir_oifits)+"/"
         if args.band == 'LM':
@@ -116,7 +117,7 @@ if __name__ == '__main__':
         elif args.band == 'N':
             scifiles=glob.glob(args.dir_oifits+'*'+args.sciname+'*_IR-N*Chop*.fits')
             calfiles=glob.glob(args.dir_oifits+'*'+args.calname+'*_IR-N*Chop*.fits')
-
+    
     nfiles_sci=np.size(scifiles)
     nfiles_cal=np.size(calfiles)
     list_of_dicts_sci=[]
@@ -203,8 +204,8 @@ if __name__ == '__main__':
         sorted_chop_cal.append(chop_cal)
         #sorted_tpl_start_cal.append(files)
 
-
-
+        
+    
     #-----------------
     # Flux calibration
     #-----------------
@@ -219,7 +220,7 @@ if __name__ == '__main__':
     sorted_res_cal=np.array(sorted_res_cal)
     sorted_chop_sci=np.array(sorted_chop_sci)
     sorted_chop_cal=np.array(sorted_chop_cal)
-
+    
     if args.mode == 'flux':
        outputdir=args.dir_oifits+'calflux/'
     elif args.mode == 'corrflux':
@@ -256,3 +257,5 @@ if __name__ == '__main__':
             print('Cal = {0}'.format(sorted_calfiles[ind_bcd[0][ind_res][ind_chop][ind]]))
             print('No calibration performed')
             continue
+
+
