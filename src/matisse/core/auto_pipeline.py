@@ -310,8 +310,8 @@ def run_pipeline(
                 tplstart = hdr["HIERARCH ESO TPL START"]
                 chipname = hdr["HIERARCH ESO DET CHIP NAME"]
                 targetname = hdr.get("ESO OBS TARG NAME", "CAL FILE")
-                objectname = hdr.get['OBJECT']
-                if 'LAMP' in objectname:
+                if 'CAL FILE' in targetname:
+                    log.warning(f"{targetname} does not exist, CAL file.")
                     continue
             except KeyError:
                 log.warning(f"{filename} is not a valid MATISSE FITS file.")
@@ -705,7 +705,11 @@ def run_pipeline(
         list_oifits_files = glob.glob(repIter + "/*.rb/*_RAW_INT*.fits")
         for oifits_filename in list_oifits_files:
             hdu = fits.open(oifits_filename, mode="update")
-            targetname = hdu[0].header["ESO OBS TARG NAME"]
+            try:
+                targetname = hdu[0].header["ESO OBS TARG NAME"]
+            except KeyError:
+                log.warning("There is no target name.")
+                continue
             try:
                 result = v.query_region(targetname, radius="20s")
                 fluxL = result[0][0][0]
