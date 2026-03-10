@@ -310,9 +310,6 @@ def run_pipeline(
                 tplstart = hdr["HIERARCH ESO TPL START"]
                 chipname = hdr["HIERARCH ESO DET CHIP NAME"]
                 targetname = hdr.get("ESO OBS TARG NAME", "CAL FILE")
-                if "CAL FILE" in targetname:
-                    log.warning(f"{targetname} does not exist, CAL file.")
-                    continue
             except KeyError:
                 log.warning(f"{filename} is not a valid MATISSE FITS file.")
                 progress.advance(task)
