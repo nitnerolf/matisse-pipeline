@@ -35,8 +35,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### 2️⃣ Create and activate a virtual environment
 
 ```bash
-uv venv
-source .venv/bin/activate
+uv venv --python 3.14 <my-matisse-env>
+source <my-matisse-env>/bin/activate
 ```
 
 ### 3️⃣ Install the package
@@ -47,46 +47,16 @@ uv pip install matisse
 
 ---
 
-## 🧑‍💻 Developer installation
+## ⚡ Quick Start
 
-> For contributors or developers working on the pipeline codebase.
-
-### 1️⃣ Clone the repository
-
-```bash
-git clone https://github.com/Matisse-Consortium/matisse-pipeline.git
-cd matisse-pipeline
-```
-
-### 2️⃣ Install in editable mode with dev dependencies
-
-```bash
-uv pip install -e . --group test --group typecheck
-```
-
-This installs:
-
-- `pytest`, `ruff`, and `pre-commit` for testing and linting
-- `mypy` and `types-termcolor` for type checking
-
-### 3️⃣ Run tests
-
-```bash
-uv run pytest
-```
-
-### 4️⃣ Lint and type check
-
-```bash
-uv run ruff check src/
-uv run mypy src/
-```
+A complete step-by-step guide is available here: [docs/workflow-tutorial.md](https://github.com/Matisse-Consortium/matisse-pipeline/tree/main/docs/workflow-tutorial.md)
 
 ---
 
-## ⚡ Quick Start
+## 🤝 Contributing
 
-A complete step-by-step guide is available here [docs/workflow-tutorial.md](https://github.com/Matisse-Consortium/matisse-pipeline/tree/main/docs/workflow-tutorial.md)
+We welcome contributions from the Matisse Consortium and the wider community!
+A detailed procedure on how to set up your environment, follow our coding standards, and submit a Pull Request can be found in our **[Contributing Guide](docs/CONTRIBUTING.md)**.
 
 ---
 
@@ -119,6 +89,7 @@ matisse-pipeline/
 │   ├── core/                 # Core pipeline modules
 │   └── viewer/               # Viewer interface
 ├── tests/                    # Unit tests
+├── docs/                     # Documentations
 ├── pyproject.toml            # Project configuration
 ├── CHANGELOG.md              # Project follow-up and versioning
 └── README.md
