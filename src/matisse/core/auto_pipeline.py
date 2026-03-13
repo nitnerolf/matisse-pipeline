@@ -702,7 +702,11 @@ def run_pipeline(
         list_oifits_files = glob.glob(repIter + "/*.rb/*_RAW_INT*.fits")
         for oifits_filename in list_oifits_files:
             hdu = fits.open(oifits_filename, mode="update")
-            targetname = hdu[0].header["ESO OBS TARG NAME"]
+            try:
+                targetname = hdu[0].header["ESO OBS TARG NAME"]
+            except KeyError:
+                log.warning("There is no target name.")
+                continue
             try:
                 result = v.query_region(targetname, radius="20s")
                 fluxL = result[0][0][0]
