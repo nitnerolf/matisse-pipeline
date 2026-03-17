@@ -65,9 +65,13 @@ def change_oifits_filename(oifits: Path) -> None:
         bcd2 = hdu.get("HIERARCH ESO INS BCD2 NAME", "noBCD2")
 
         # Build new filename
+        if oifits.suffix == ".gz":
+            suffix = ".fits.gz"
+        elif oifits.suffix == ".fits":
+            suffix = ".fits"
         new_name = (
             f"{tpl_start}_{targ}_{stations_config}_{chip_type}_"
-            f"{resol}_{bcd1}_{bcd2}_{chop_mode}.fits"
+            f"{resol}_{bcd1}_{bcd2}_{chop_mode}{suffix}"
         )
 
         new_path = direc / new_name
