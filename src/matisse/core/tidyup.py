@@ -131,8 +131,9 @@ def tidyup_path(input_dir: Path) -> None:
     # Collect recursively all FITS files
     fits_files: list[Path] = [
         p
-        for p in input_dir.rglob("*.fits")
-        if not any(fnmatch(p.name, pat) for pat in SKIP_PATTERNS)
+        for p in input_dir.rglob("*")
+        if (p.suffix in (".fits", ".gz") or p.name.endswith(".fits.gz"))
+        and not any(fnmatch(p.name, pat) for pat in SKIP_PATTERNS)
     ]
     if len(fits_files) == 0:
         log.info(f"No OIFITS/FITS files found in {input_dir}")
