@@ -66,7 +66,7 @@ def resolve_raw_input(raw_spec: str | Sequence[str]) -> tuple[list[Path], str]:
             if p.suffix.lower() == ".fits":
                 paths = [p]
                 source = "single FITS file"
-            if p.name.lower().endswith(".fits.gz"):
+            elif p.name.lower().endswith(".fits.gz"):
                 paths = [p]
                 source = "single compressed FITS file"
             elif p.suffix.lower() in {".lst", ".list", ".txt"}:
