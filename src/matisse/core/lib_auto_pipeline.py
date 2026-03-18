@@ -95,9 +95,9 @@ def matisse_calib(
     global _warning_shown
 
     keyDetReadCurname = header["HIERARCH ESO DET READ CURNAME"]
-    keyDetChipName = header["HIERARCH ESO DET CHIP NAME"]
-    keyDetSeq1Dit = header["HIERARCH ESO DET SEQ1 DIT"]
-    keyDetSeq1Period = header["HIERARCH ESO DET SEQ1 PERIOD"]
+    keyDetChipName    = header["HIERARCH ESO DET CHIP NAME"]
+    keyDetSeq1Dit     = header["HIERARCH ESO DET SEQ1 DIT"]
+    keyDetSeq1Period  = header["HIERARCH ESO DET SEQ1 PERIOD"]
     keyInsPilId = header["HIERARCH ESO INS PIL ID"]
     keyInsPinId = header["HIERARCH ESO INS PIN ID"]
     keyInsDilId = header["HIERARCH ESO INS DIL ID"]
@@ -129,7 +129,7 @@ def matisse_calib(
     mjd_tplstart = time_tplstart.mjd
 
     if (
-        action == "ACTION_MAT_IM_BASIC"
+        action    == "ACTION_MAT_IM_BASIC"
         or action == "ACTION_MAT_IM_EXTENDED"
         or action == "ACTION_MAT_IM_REM"
     ):
@@ -142,13 +142,13 @@ def matisse_calib(
             tagCalib = matisse_type(hdr)
             if tagCalib == "BADPIX":
                 keyDetReadCurnameCalib = hdr["HIERARCH ESO DET READ CURNAME"]
-                keyTplStartCalib = hdr["HIERARCH ESO TPL START"]
-                keyDetChipNameCalib = hdr["HIERARCH ESO DET CHIP NAME"]
+                keyTplStartCalib       = hdr["HIERARCH ESO TPL START"]
+                keyDetChipNameCalib    = hdr["HIERARCH ESO DET CHIP NAME"]
                 time_tplstartcalib = Time(keyTplStartCalib, format="isot", scale="utc")
-                mjd_tplstartcalib = time_tplstartcalib.mjd
+                mjd_tplstartcalib  = time_tplstartcalib.mjd
 
             if tagCalib == "BADPIX" and (
-                keyDetReadCurnameCalib == keyDetReadCurname
+                keyDetReadCurnameCalib  == keyDetReadCurname
                 and keyDetChipNameCalib == keyDetChipName
             ):
                 idx = -1
@@ -323,6 +323,7 @@ def matisse_calib(
                 else:
                     res.append((elt, tagCalib))
                     nbCalib += 1
+        logger.info(f"action est_flat, found {nbCalib} calibration files")
         if nbCalib == 3:
             status = 1
         else:
@@ -624,6 +625,7 @@ def matisse_calib(
         if (keyDetChipName == "AQUARIUS" and keyInsPinId != "PHOTO") or (
             keyDetChipName == "HAWAII-2RG" and keyInsPilId != "PHOTO"
         ):
+            logger.info(f"action raw_estimates, found {nbCalib} calibration files")
             if nbCalib >= 4:
                 status = 1
             else:
@@ -808,6 +810,8 @@ def matisse_calib(
                 else:
                     res.append((elt, tagCalib))
                     nbCalib += 1
+                    
+        logger.info(f"action est_kappa, found {nbCalib} calibration files")
         if nbCalib == 4:
             status = 1
         else:
@@ -831,8 +835,8 @@ def matisse_calib(
                 or tagCalib == "OBS_FLATFIELD"
             ):
                 keyDetReadCurnameCalib = hdr["HIERARCH ESO DET READ CURNAME"]
-                keyDetChipNameCalib = hdr["HIERARCH ESO DET CHIP NAME"]
-                keyDetSeq1DitCalib = hdr["HIERARCH ESO DET SEQ1 DIT"]
+                keyDetChipNameCalib    = hdr["HIERARCH ESO DET CHIP NAME"]
+                keyDetSeq1DitCalib     = hdr["HIERARCH ESO DET SEQ1 DIT"]
                 keyInsPilIdCalib = hdr["HIERARCH ESO INS PIL ID"]
                 keyInsPinIdCalib = hdr["HIERARCH ESO INS PIN ID"]
                 keyInsDilIdCalib = hdr["HIERARCH ESO INS DIL ID"]
@@ -843,7 +847,7 @@ def matisse_calib(
                 keyInsFinIdCalib = hdr["HIERARCH ESO INS FIN ID"]
                 keyTplStartCalib = hdr["HIERARCH ESO TPL START"]
                 time_tplstartcalib = Time(keyTplStartCalib, format="isot", scale="utc")
-                mjd_tplstartcalib = time_tplstartcalib.mjd
+                mjd_tplstartcalib  = time_tplstartcalib.mjd
 
             if tagCalib == "BADPIX" and (
                 keyDetReadCurnameCalib == keyDetReadCurname
@@ -946,6 +950,7 @@ def matisse_calib(
                 else:
                     res.append((elt, tagCalib))
                     nbCalib += 1
+        logger.info(f"action est_shift, found {nbCalib} calibration files")
         if nbCalib == 3:
             status = 1
         else:
