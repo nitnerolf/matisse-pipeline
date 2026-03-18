@@ -237,7 +237,7 @@ def resample_to_matisse_resolution(
     wl_new: list[float] = [min_wl]
     wl = min_wl
     while wl < max_wl:
-        wl += polyval(wl, dl_coeffs) / kernel_width_px
+        wl += float(polyval(wl, dl_coeffs) / kernel_width_px)
         wl_new.append(wl)
     wl_arr = np.array(wl_new)
 

@@ -76,7 +76,9 @@ class FluxCalibrationConfig:
     spectral_features: bool = False  # annotate spectral features in diagnostics
 
 
-def _extract_exposure_times(hdul: fits.HDUList) -> np.ndarray | None:
+def _extract_exposure_times(
+    hdul: fits.HDUList,
+) -> tuple[np.ndarray | None, float | None]:
     """Extract exposure times from an OIFITS HDUList.
 
     Priority:
@@ -84,6 +86,8 @@ def _extract_exposure_times(hdul: fits.HDUList) -> np.ndarray | None:
     2. Fallback to primary-header detector exposure keywords.
     """
 
+    int_time_flux: np.ndarray | None = None
+    int_time_med: float | None = None
     for ext_name in ("OI_FLUX", "OI_VIS", "OI_T3"):
         try:
             table = hdul[ext_name].data
@@ -91,17 +95,21 @@ def _extract_exposure_times(hdul: fits.HDUList) -> np.ndarray | None:
             continue
         if table is not None and "INT_TIME" in table.names:
             int_time_flux = np.asarray(table["INT_TIME"], dtype=float)
+            break
 
-    if_one_time = np.median(int_time_flux) == np.min(int_time_flux)
-    if if_one_time:
-        int_time_med = int_time_flux[0]
+    if int_time_flux is not None and int_time_flux.size > 0:
+        if_one_time = np.median(int_time_flux) == np.min(int_time_flux)
+        if if_one_time:
+            int_time_med = float(int_time_flux[0])
+        else:
+            int_time_med = float(np.median(int_time_flux))
 
     hdr = hdul[0].header
     dit = hdr.get("HIERARCH ESO DET SEQ1 DIT", hdr.get("HIERARCH ESO DET DIT"))
     if dit is None:
         dit = hdr.get("EXPTIME")
     if dit is None:
-        return None
+        return None, int_time_med
 
     ndit = hdr.get("HIERARCH ESO DET NDIT", 1.0)
     return np.asarray([float(dit) * float(ndit)], dtype=float), int_time_med
@@ -426,7 +434,16 @@ def calibrate_flux(
                 "SCI/CAL exposure times match (NDIT x DIT = %.1fs).",
                 float(exp_sci[0]),
             )
-            if not np.isclose(int_time_med_sci, int_time_med_cal, rtol=0.0, atol=1e-3):
+            if (
+                int_time_med_sci is not None
+                and int_time_med_cal is not None
+                and not np.isclose(
+                    int_time_med_sci,
+                    int_time_med_cal,
+                    rtol=0.0,
+                    atol=1e-3,
+                )
+            ):
                 logger.warning(
                     f"OI_FLUX integration time differs between SCI and CAL: {int_time_med_sci:.1f}s vs. {int_time_med_cal:.1f}s for the CAL)"
                 )
