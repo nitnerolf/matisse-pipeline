@@ -138,31 +138,60 @@ def reduce(
 
     # --- 5. Run pipeline and handle errors ---
     try:
-        run_pipeline(
-            dirRaw=dir_raw,
-            dirResult=dir_result,
-            dirCalib=dir_calib,
-            nbCore=nbcore,
-            resol=resol,
-            paramL=param_l,
-            paramN=param_n,
-            overwrite=int(overwrite),
-            maxIter=max_iter,
-            skipL=skip_l,
-            skipN=skip_n,
-            tplstartsel=tplstart,
-            tplidsel=tplid,
-            spectralBinning=spectral_binning,
-            check_blocks=check_blocks,
-            check_calib=check_calib,
-            detailed_block=detailed_block,
-            custom_recipes_dir=custom_recipes_dir,
-        )
-        if not check_blocks and not check_calib:
-            log.info(f"[green][SUCCESS] Results saved to {dir_result}")
-            console.rule("[bold green]Reduction completed successfully[/]")
-        else:
-            console.rule("[bold green]Check mode: no files will be processed[/]")
+        if not skip_l:
+            log.info("L/M band data will be processed.")
+            run_pipeline(
+                dirRaw=dir_raw,
+                dirResult=dir_result,
+                dirCalib=dir_calib,
+                nbCore=nbcore,
+                resol=resol,
+                paramL=param_l,
+                paramN=param_n,
+                overwrite=int(overwrite),
+                maxIter=max_iter,
+                skipL=False,
+                skipN=True,
+                tplstartsel=tplstart,
+                tplidsel=tplid,
+                spectralBinning=spectral_binning,
+                check_blocks=check_blocks,
+                check_calib=check_calib,
+                detailed_block=detailed_block,
+                custom_recipes_dir=custom_recipes_dir,
+            )
+            if not check_blocks and not check_calib:
+                log.info(f"[green][SUCCESS] Results saved to {dir_result}")
+                console.rule("[bold green]Reduction completed successfully[/]")
+            else:
+                console.rule("[bold green]Check mode: no files will be processed[/]")
+        elif not skip_n:
+            log.info("N band data will be processed.")
+            run_pipeline(
+                dirRaw=dir_raw,
+                dirResult=dir_result,
+                dirCalib=dir_calib,
+                nbCore=nbcore,
+                resol=resol,
+                paramL=param_l,
+                paramN=param_n,
+                overwrite=int(overwrite),
+                maxIter=max_iter,
+                skipL=True,
+                skipN=False,
+                tplstartsel=tplstart,
+                tplidsel=tplid,
+                spectralBinning=spectral_binning,
+                check_blocks=check_blocks,
+                check_calib=check_calib,
+                detailed_block=detailed_block,
+                custom_recipes_dir=custom_recipes_dir,
+            )
+            if not check_blocks and not check_calib:
+                log.info(f"[green][SUCCESS] Results saved to {dir_result}")
+                console.rule("[bold green]Reduction completed successfully[/]")
+            else:
+                console.rule("[bold green]Check mode: no files will be processed[/]")
     except Exception as err:
         console.rule("[bold red]Reduction failed[/]")
         log.exception("MATISSE pipeline execution failed.")
