@@ -910,7 +910,7 @@ def test_flux_calibrate(flux_dir, tmp_path):
 
     result = runner.invoke(
         app,
-        ["flux_calibrate", "-d", str(temp_data_dir)],
+        ["flux_calibrate", "-d", str(temp_data_dir), "-f", tmp_path],
         catch_exceptions=True,
     )
 
@@ -935,7 +935,7 @@ def test_flux_calibrate_show(flux_dir, tmp_path):
 
     result = runner.invoke(
         app,
-        ["flux_calibrate", "-d", str(temp_data_dir), "--show", "--sf"],
+        ["flux_calibrate", "-d", str(temp_data_dir), "--show", "--sf", "-f", tmp_path],
         catch_exceptions=True,
     )
 
@@ -961,12 +961,7 @@ def test_flux_calibrate_airmass_correction(flux_dir, tmp_path):
 
     result = runner.invoke(
         app,
-        [
-            "flux_calibrate",
-            "-d",
-            str(temp_data_dir),
-            "--airmass-corr",
-        ],
+        ["flux_calibrate", "-d", str(temp_data_dir), "--airmass-corr", "-f", tmp_path],
         catch_exceptions=True,
     )
 
@@ -998,6 +993,8 @@ def test_flux_calibrate_Nband(flux_dir, tmp_path):
             "both",
             "-b",
             "N",
+            "-f",
+            tmp_path,
         ],
         catch_exceptions=True,
     )
@@ -1021,7 +1018,15 @@ def test_flux_calibrate_invalid_band(flux_dir, tmp_path):
 
     result = runner.invoke(
         app,
-        ["flux_calibrate", "-d", str(temp_data_dir), "--band", "INVALID"],
+        [
+            "flux_calibrate",
+            "-d",
+            str(temp_data_dir),
+            "--band",
+            "INVALID",
+            "-f",
+            tmp_path,
+        ],
         catch_exceptions=True,
     )
 
@@ -1038,7 +1043,15 @@ def test_flux_calibrate_invalid_mode(flux_dir, tmp_path):
 
     result = runner.invoke(
         app,
-        ["flux_calibrate", "-d", str(temp_data_dir), "--mode", "INVALID"],
+        [
+            "flux_calibrate",
+            "-d",
+            str(temp_data_dir),
+            "--mode",
+            "INVALID",
+            "-f",
+            tmp_path,
+        ],
         catch_exceptions=True,
     )
 
@@ -1057,7 +1070,7 @@ def test_flux_calibrate_run_failure_is_reported(monkeypatch, tmp_path):
 
     result = runner.invoke(
         app,
-        ["flux_calibrate", "-d", str(tmp_path)],
+        ["flux_calibrate", "-d", str(tmp_path), "-f", tmp_path],
         catch_exceptions=True,
     )
 
