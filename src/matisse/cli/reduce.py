@@ -165,7 +165,7 @@ def reduce(
                 console.rule("[bold green]Reduction completed successfully[/]")
             else:
                 console.rule("[bold green]Check mode: no files will be processed[/]")
-        elif not skip_n:
+        if not skip_n:
             log.info("N band data will be processed.")
             run_pipeline(
                 dirRaw=dir_raw,
