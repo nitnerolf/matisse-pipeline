@@ -11,6 +11,8 @@ from pathlib import Path
 
 import typer
 
+from matisse.core.flux.databases import database_status
+
 app = typer.Typer(help="Run environment diagnostics for MATISSE (EsoRex).")
 
 
@@ -201,6 +203,43 @@ def echo_esorex_missing() -> None:
     )
 
 
+def check_calibrator_databases() -> CheckResult:
+    """Check local availability of flux calibrator spectral databases."""
+    status_by_file = database_status()
+
+    missing = [
+        name for name, status in status_by_file.items() if status.startswith("missing")
+    ]
+    override = [
+        name for name, status in status_by_file.items() if status == "local_override"
+    ]
+    legacy = [
+        name for name, status in status_by_file.items() if status == "legacy_bundle"
+    ]
+
+    if not missing:
+        if override:
+            source = "local override"
+        elif legacy:
+            source = "legacy bundle"
+        else:
+            source = "cache"
+        return CheckResult(
+            name="calibrator databases",
+            ok=True,
+            message=f"{len(status_by_file)}/{len(status_by_file)} available ({source})",
+            fatal=False,
+        )
+
+    missing_list = ", ".join(missing)
+    return CheckResult(
+        name="calibrator databases",
+        ok=False,
+        message=f"missing {len(missing)}/{len(status_by_file)}: {missing_list}",
+        fatal=False,
+    )
+
+
 # ---------- typer command ----------
 
 
@@ -307,6 +346,9 @@ def doctor(
     # If chosen_dir is None, we call esorex --recipes without --recipe-dir (default behavior).
     mat_check, _ = check_matisse_recipes(recipe_dir=chosen_dir, require_any=require_any)
     results.append(mat_check)
+
+    # 5) Calibrator databases status (non-fatal)
+    results.append(check_calibrator_databases())
 
     fatal = any((not r.ok and r.fatal) for r in results)
     for r in results:
