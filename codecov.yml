@@ -6,6 +6,8 @@ coverage:
     patch:
       default:
         informational: true
+        target: 90%   # objectif
+        threshold: 5% # tolérance (ex: 78–82%)
 
 comment:
   layout: reach, diff, flags, files

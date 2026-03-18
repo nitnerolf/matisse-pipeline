@@ -4,6 +4,7 @@ from matisse.cli import (
     bcd,
     calibrate,
     doctor,
+    flux_calibrate,
     format_results,
     reduce,
     show,
@@ -17,6 +18,7 @@ app.add_typer(bcd.app, name="bcd")
 app.command(name="show")(show.show)
 app.command(name="doctor")(doctor.doctor)
 app.command(name="format")(format_results.format_results)
+app.command(name="flux_calibrate")(flux_calibrate.flux_calibrate)
 
 
 # -------------------------

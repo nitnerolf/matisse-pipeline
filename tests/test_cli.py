@@ -383,6 +383,44 @@ def test_doctor_command_esorex_not_found(monkeypatch):
     assert "esorex" in result.output.lower()
 
 
+def test_doctor_reports_calibrator_database_status(monkeypatch):
+    """Ensure 'matisse doctor' reports calibrator database status."""
+    from matisse.cli import doctor as doctor_module
+
+    monkeypatch.setattr(
+        doctor_module,
+        "database_status",
+        lambda: {
+            "vBoekelDatabase.fits": "cached",
+            "calib_spec_db_v10.fits": "cached",
+            "calib_spec_db_v10_supplement.fits": "missing",
+        },
+    )
+    monkeypatch.setattr(
+        doctor_module,
+        "check_esorex_in_path",
+        lambda: doctor_module.CheckResult("esorex", True, "found at /mock/esorex"),
+    )
+    monkeypatch.setattr(
+        doctor_module,
+        "check_matisse_recipes",
+        lambda recipe_dir, require_any: (
+            doctor_module.CheckResult("MATISSE recipes", True, "1 found."),
+            ["mat_raw_estimates"],
+        ),
+    )
+
+    result = runner.invoke(
+        app,
+        ["doctor", "--no-macports-probe"],
+        catch_exceptions=False,
+    )
+
+    assert result.exit_code == 0
+    assert "calibrator databases" in result.output
+    assert "missing 1/3" in result.output
+
+
 def test_calibrate_command(data_dir, tmp_path, skip_without_esorex):
     """Ensure 'matisse calibrate' run on testing data (requires esorex)."""
 
@@ -861,3 +899,182 @@ def test_bcd_merge(bcd_dir, tmp_path):
         f"Expected 1 merged file to be created, but found {n_merge} in output directory."
     )
     assert result.exit_code == 0
+
+
+def test_flux_calibrate(flux_dir, tmp_path):
+    """Test `matisse flux_calibrate` functionality."""
+    import shutil
+
+    temp_data_dir = tmp_path / "temp_flux_data"
+    shutil.copytree(flux_dir, temp_data_dir)
+
+    result = runner.invoke(
+        app,
+        ["flux_calibrate", "-d", str(temp_data_dir), "-f", tmp_path],
+        catch_exceptions=True,
+    )
+
+    resultdir = temp_data_dir / "calflux"
+
+    assert result.exit_code == 0, f"Flux calibration failed:\n{result.output}"
+    assert resultdir.exists(), "Flux calibration output directory was not created."
+    calibrated_files = list(resultdir.glob("*_calflux.fits"))
+    assert len(calibrated_files) == 1, (
+        f"Expected 1 calibrated file, found {len(calibrated_files)}:\n{calibrated_files}"
+    )
+
+
+def test_flux_calibrate_show(flux_dir, tmp_path):
+    """Test `matisse flux_calibrate` functionality with figures."""
+    import shutil
+
+    from matplotlib import pyplot as plt
+
+    temp_data_dir = tmp_path / "temp_flux_data"
+    shutil.copytree(flux_dir, temp_data_dir)
+
+    result = runner.invoke(
+        app,
+        ["flux_calibrate", "-d", str(temp_data_dir), "--show", "--sf", "-f", tmp_path],
+        catch_exceptions=True,
+    )
+
+    resultdir = temp_data_dir / "calflux"
+
+    assert result.exit_code == 0, f"Flux calibration failed:\n{result.output}"
+    assert resultdir.exists(), "Flux calibration output directory was not created."
+    calibrated_files = list(resultdir.glob("*_calflux.fits"))
+    assert len(calibrated_files) == 1, (
+        f"Expected 1 calibrated file, found {len(calibrated_files)}:\n{calibrated_files}"
+    )
+    assert len(plt.get_fignums()) == 2, (
+        f"Expected 1 figure to be generated, but found {len(plt.get_fignums())}"
+    )
+
+
+def test_flux_calibrate_airmass_correction(flux_dir, tmp_path):
+    """Test `matisse flux_calibrate` functionality with airmass correction."""
+    import shutil
+
+    temp_data_dir = tmp_path / "temp_flux_data"
+    shutil.copytree(flux_dir, temp_data_dir)
+
+    result = runner.invoke(
+        app,
+        ["flux_calibrate", "-d", str(temp_data_dir), "--airmass-corr", "-f", tmp_path],
+        catch_exceptions=True,
+    )
+
+    resultdir = temp_data_dir / "calflux"
+
+    assert result.exit_code == 0, f"Flux calibration failed:\n{result.output}"
+    assert resultdir.exists(), "Flux calibration output directory was not created."
+    calibrated_files = list(resultdir.glob("*_calflux.fits"))
+    assert len(calibrated_files) == 1, (
+        f"Expected 1 calibrated file, found {len(calibrated_files)}:\n{calibrated_files}"
+    )
+
+
+def test_flux_calibrate_Nband(flux_dir, tmp_path):
+    """Test `matisse flux_calibrate` functionality with correlated flux."""
+    import shutil
+
+    temp_data_dir = tmp_path / "temp_flux_data"
+    shutil.copytree(flux_dir, temp_data_dir)
+
+    result = runner.invoke(
+        app,
+        [
+            "flux_calibrate",
+            "-d",
+            str(temp_data_dir),
+            "--no-airmass-corr",
+            "--mode",
+            "both",
+            "-b",
+            "N",
+            "-f",
+            tmp_path,
+        ],
+        catch_exceptions=True,
+    )
+
+    resultdir = temp_data_dir / "calcorrflux"
+
+    assert result.exit_code == 0, f"Flux calibration failed:\n{result.output}"
+    assert resultdir.exists(), "Flux calibration output directory was not created."
+    calibrated_files = list(resultdir.glob("*_calcorrflux.fits"))
+    assert len(calibrated_files) == 1, (
+        f"Expected 1 calibrated file, found {len(calibrated_files)}:\n{calibrated_files}"
+    )
+
+
+def test_flux_calibrate_invalid_band(flux_dir, tmp_path):
+    """Typer should reject invalid --band values before command logic runs."""
+    import shutil
+
+    temp_data_dir = tmp_path / "temp_flux_data"
+    shutil.copytree(flux_dir, temp_data_dir)
+
+    result = runner.invoke(
+        app,
+        [
+            "flux_calibrate",
+            "-d",
+            str(temp_data_dir),
+            "--band",
+            "INVALID",
+            "-f",
+            tmp_path,
+        ],
+        catch_exceptions=True,
+    )
+
+    assert result.exit_code != 0
+    assert "Invalid value for '--band'" in strip_ansi(result.output)
+
+
+def test_flux_calibrate_invalid_mode(flux_dir, tmp_path):
+    """Typer should reject invalid --mode values before command logic runs."""
+    import shutil
+
+    temp_data_dir = tmp_path / "temp_flux_data"
+    shutil.copytree(flux_dir, temp_data_dir)
+
+    result = runner.invoke(
+        app,
+        [
+            "flux_calibrate",
+            "-d",
+            str(temp_data_dir),
+            "--mode",
+            "INVALID",
+            "-f",
+            tmp_path,
+        ],
+        catch_exceptions=True,
+    )
+
+    assert result.exit_code != 0
+    assert "Invalid value for '--mode'" in strip_ansi(result.output)
+
+
+def test_flux_calibrate_run_failure_is_reported(monkeypatch, tmp_path):
+    """Ensure flux_calibrate reports exceptions raised by run_flux_calibration."""
+    from matisse.cli import flux_calibrate as flux_calibrate_module
+
+    def fail_run(_config):
+        raise RuntimeError("simulated calibration crash")
+
+    monkeypatch.setattr(flux_calibrate_module, "run_flux_calibration", fail_run)
+
+    result = runner.invoke(
+        app,
+        ["flux_calibrate", "-d", str(tmp_path), "-f", tmp_path],
+        catch_exceptions=True,
+    )
+
+    output = strip_ansi(result.output)
+    assert result.exit_code == 1
+    assert "Flux calibration failed" in output
+    assert "simulated calibration crash" in output
