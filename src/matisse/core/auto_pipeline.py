@@ -175,9 +175,7 @@ def run_pipeline(
     if dirCalib:
         p = Path(dirCalib)
         if p.is_dir():
-            listArchive = glob.glob(dirCalib + "/*.fits") + glob.glob(
-                dirCalib + "/*.fits.gz"
-            )
+            listArchive = list(p.rglob("*.fits")) + list(p.rglob("*.fits.gz"))
             log.info(f"Calibration directory explicitly provided: {p}")
         else:
             listArchive = []
@@ -357,7 +355,7 @@ def run_pipeline(
             listIter: list[str] = []
             log.info("Listing files from previous iteration...")
             for iter in range(iterNumber - 1):
-                repIterPrev = dirResult + "/Iter" + str(iter + 1)
+                repIterPrev = os.path.join(dirResult, "Reduced")
                 listRepIter = [
                     os.path.join(repIterPrev, f)
                     for f in os.listdir(repIterPrev)
@@ -514,7 +512,7 @@ def run_pipeline(
 
         # Create the SOF files
         log.info("Creating the sof files and directories...")
-        repIter = dirResult + "/Iter" + str(iterNumber)
+        repIter = os.path.join(dirResult, "Reduced")
         if os.path.isdir(repIter):
             if overwrite == 1:
                 shutil.rmtree(repIter)
@@ -536,33 +534,34 @@ def run_pipeline(
             overwritei = overwrite
             if red_block["status"] == 1:
                 cptStatusOne += 1
-                sofname = os.path.join(repIter, rbname_safe + ".sof")
+                sofname   = os.path.join(repIter, rbname_safe + ".sof")
                 outputDir = os.path.join(repIter, rbname_safe + ".rb")
                 print_sof_status = True
                 if overwritei == 0:
-                    if (
+                    files_found = (
                         glob.glob(os.path.join(outputDir, "*_RAW_INT_*.fits"))
                         or glob.glob(os.path.join(outputDir, "*_RAW_INT_*.fits.gz"))
                         or glob.glob(os.path.join(outputDir, "IM_BASIC.fits"))
                         or glob.glob(os.path.join(outputDir, "IM_BASIC.fits.gz"))
-                    ):
-                        log.info("Block already processed.")
+                        or glob.glob(os.path.join(outputDir, "OBS_FLATFIELD.fits"))
+                        or glob.glob(os.path.join(outputDir, "OBS_FLATFIELD.fits.gz"))
+                        or glob.glob(os.path.join(outputDir, "KAPPA_MATRIX.fits"))
+                        or glob.glob(os.path.join(outputDir, "KAPPA_MATRIX.fits.gz"))
+                        or glob.glob(os.path.join(outputDir, "SHIFT_MAP.fits"))
+                        or glob.glob(os.path.join(outputDir, "SHIFT_MAP.fits.gz"))
+                    )
+                    if files_found:
+                        filename = Path(files_found[0]).name
+                        log.info(f"Block already processed, file {filename} exists.")
                         print_sof_status = False
                     else:
                         overwritei = 1
+                        log.info("Block will be processed.")
+
                         # NOTES (aso) :
                         # overwritei = 1 (to be checked: calibration files are
                         # systematically reprocessed when overwritei == 1).
                         # Do we actually want this behavior?
-
-                if glob.glob(os.path.join(outputDir, "*FIELD.fits")) or glob.glob(
-                    os.path.join(outputDir, "*FIELD.fits.gz")
-                ):
-                    skip_calib_iter = True
-                elif glob.glob(os.path.join(outputDir, "SHIFT_MAP.fits")) or glob.glob(
-                    os.path.join(outputDir, "SHIFT_MAP.fits.gz")
-                ):
-                    skip_calib_iter = True
 
                 resol = "no res"
                 if os.path.exists(sofname):
@@ -692,6 +691,7 @@ def run_pipeline(
                     listCmdEsorex.append(cmd)
             else:
                 cptStatusZero += 1
+                log.info("No recipe found to run for this block?")
             cpt += 1
 
         if not check_blocks:
