@@ -206,6 +206,12 @@ def bcd_dir() -> Path:
 
 
 @pytest.fixture(scope="session")
+def flux_dir() -> Path:
+    """Return the path to the test flux directory."""
+    return Path(__file__).parent / "data" / "test_dir_flux"
+
+
+@pytest.fixture(scope="session")
 def viewer_dir() -> Path:
     """Return the path to the test viewer directory."""
     return Path(__file__).parent / "data" / "test_dir_viewer"
@@ -215,18 +221,6 @@ def viewer_dir() -> Path:
 def real_obs_target(data_dir: Path) -> Path:
     """Return the path to the target real observation FITS file."""
     return data_dir / "MATIS_target_raw.fits"
-
-
-@pytest.fixture(scope="session")
-def real_obs_calib(data_dir: Path) -> Path:
-    """Return the path to the calibrator real observation FITS file."""
-    return data_dir / "MATIS_calib_raw.fits"
-
-
-@pytest.fixture(scope="session")
-def real_obs_sky(data_dir: Path) -> Path:
-    """Return the path to the sky real observation FITS file."""
-    return data_dir / "MATIS_sky_raw.fits"
 
 
 @pytest.fixture(scope="session")

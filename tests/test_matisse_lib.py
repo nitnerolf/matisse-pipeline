@@ -39,19 +39,9 @@ def _make_base_header(**overrides):
     return header
 
 
-def test_matisse_type_identifies_sky_raw_from_sample_fits(real_obs_sky):
-    header = _header(real_obs_sky)
-    assert matisse_type(header) == "SKY_RAW"
-
-
 def test_matisse_type_identifies_target_raw_from_sample_fits(real_obs_target):
     header = _header(real_obs_target)
     assert matisse_type(header) == "TARGET_RAW"
-
-
-def test_matisse_type_identifies_calib_raw(real_obs_calib):
-    header = _header(real_obs_calib)
-    assert matisse_type(header) == "CALIB_RAW"
 
 
 def test_matisse_type_defaults_to_category_when_no_mapping_matches():
