@@ -534,7 +534,7 @@ def run_pipeline(
             overwritei = overwrite
             if red_block["status"] == 1:
                 cptStatusOne += 1
-                sofname   = os.path.join(repIter, rbname_safe + ".sof")
+                sofname = os.path.join(repIter, rbname_safe + ".sof")
                 outputDir = os.path.join(repIter, rbname_safe + ".rb")
                 print_sof_status = True
                 if overwritei == 0:
