@@ -57,7 +57,9 @@ def resolve_raw_input(raw_spec: str | Sequence[str]) -> tuple[list[Path], str]:
 
         if p.is_dir():
             # Directory -> glob for MATIS*.fits
-            fits_files = glob.glob(str(p / "MATIS*.fits")) + glob.glob(str(p / "MATIS*.fits.gz"))
+            fits_files = glob.glob(str(p / "MATIS*.fits")) + glob.glob(
+                str(p / "MATIS*.fits.gz")
+            )
             paths = [Path(x) for x in fits_files]
             source = "directory glob (MATIS*.fits)"
         elif p.is_file():
@@ -101,7 +103,11 @@ def resolve_raw_input(raw_spec: str | Sequence[str]) -> tuple[list[Path], str]:
         )
 
     # Keep only FITS files
-    fits = [p for p in paths if p.suffix.lower() == ".fits" or p.name.lower().endswith(".fits.gz")]
+    fits = [
+        p
+        for p in paths
+        if p.suffix.lower() == ".fits" or p.name.lower().endswith(".fits.gz")
+    ]
     if not fits:
         raise FileNotFoundError(
             "No FITS files found in the provided raw specification."

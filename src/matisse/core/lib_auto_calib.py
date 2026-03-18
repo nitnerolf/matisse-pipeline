@@ -51,8 +51,10 @@ def generate_sof_files(
     calibs = []
 
     files = (
-        f for f in input_dir.glob(f"*{band}*")
-        if f.suffix in (".fits", ".gz") and "LAMP" not in f.name
+        f
+        for f in input_dir.glob(f"*{band}*")
+        if f.suffix in (".fits", ".gz")
+        and "LAMP" not in f.name
         and (f.name.endswith(".fits") or f.name.endswith(".fits.gz"))
     )
     # Single pass: read all headers
