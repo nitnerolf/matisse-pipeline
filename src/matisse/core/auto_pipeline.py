@@ -551,8 +551,8 @@ def run_pipeline(
                         or glob.glob(os.path.join(outputDir, "SHIFT_MAP.fits.gz"))
                     )
                     if files_found:
-                        filename = Path(files_found[0]).name
-                        log.info(f"Block already processed, file {filename} exists.")
+                        existing_filename = Path(files_found[0]).name
+                        log.info(f"Block already processed, file {existing_filename} exists.")
                         print_sof_status = False
                     else:
                         overwritei = 1
