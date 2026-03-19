@@ -175,7 +175,9 @@ def run_pipeline(
     if dirCalib:
         p = Path(dirCalib)
         if p.is_dir():
-            listArchive = [str(f) for f in p.rglob("*.fits")] + [str(f) for f in p.rglob("*.fits.gz")]
+            listArchive = [str(f) for f in p.rglob("*.fits")] + [
+                str(f) for f in p.rglob("*.fits.gz")
+            ]
             log.info(f"Calibration directory explicitly provided: {p}")
         else:
             listArchive = []
@@ -553,7 +555,9 @@ def run_pipeline(
                     )
                     if files_found:
                         existing_filename = Path(files_found[0]).name
-                        log.info(f"Block already processed, file {existing_filename} exists.")
+                        log.info(
+                            f"Block already processed, file {existing_filename} exists."
+                        )
                         print_sof_status = False
                     else:
                         overwritei = 1
