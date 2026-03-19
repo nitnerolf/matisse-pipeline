@@ -175,7 +175,7 @@ def run_pipeline(
     if dirCalib:
         p = Path(dirCalib)
         if p.is_dir():
-            listArchive = list(p.rglob("*.fits")) + list(p.rglob("*.fits.gz"))
+            listArchive = [str(f) for f in p.rglob("*.fits")] + [str(f) for f in p.rglob("*.fits.gz")]
             log.info(f"Calibration directory explicitly provided: {p}")
         else:
             listArchive = []
