@@ -355,6 +355,7 @@ def run_pipeline(
             listIter: list[str] = []
             log.info("Listing files from previous iteration...")
             for iter in range(iterNumber - 1):
+                log.info(f"Listing files from iteration {iter + 1}...")
                 repIterPrev = os.path.join(dirResult, "Reduced")
                 listRepIter = [
                     os.path.join(repIterPrev, f)
