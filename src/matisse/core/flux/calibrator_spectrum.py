@@ -16,6 +16,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import socket
 import urllib.error
 from dataclasses import dataclass
 from pathlib import Path
@@ -26,6 +27,38 @@ from astropy.coordinates import SkyCoord
 from astropy.io import fits
 
 logger = logging.getLogger(__name__)
+
+
+def _is_remote_lookup_error(error: Exception) -> bool:
+    """Return True when an exception comes from an optional remote lookup.
+
+    STARSFLUX access is best-effort. Transient network failures must not abort
+    flux calibration because the workflow can fall back to local databases.
+    """
+
+    if isinstance(
+        error,
+        (
+            TimeoutError,
+            socket.timeout,
+            urllib.error.URLError,
+            ConnectionError,
+            OSError,
+        ),
+    ):
+        return True
+
+    message = str(error).lower()
+    remote_error_markers = (
+        "timed out",
+        "timeout",
+        "connection",
+        "temporary failure",
+        "name or service not known",
+        "network is unreachable",
+        "remote end closed connection",
+    )
+    return any(marker in message for marker in remote_error_markers)
 
 
 # ---------------------------------------------------------------------------
@@ -157,6 +190,16 @@ def lookup_starsflux(
             e.reason,
         )
         return None
+    except Exception as exc:
+        if _is_remote_lookup_error(exc):
+            logger.warning(
+                "STARSFLUX lookup failed for '%s' (%s: %s). Falling back to local databases.",
+                cal_name,
+                type(exc).__name__,
+                exc,
+            )
+            return None
+        raise
 
 
 # ---------------------------------------------------------------------------
