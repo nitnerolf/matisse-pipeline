@@ -17,7 +17,9 @@ from __future__ import annotations
 import filecmp
 import glob
 import os
+import shlex
 import shutil
+import subprocess
 import sys
 from multiprocessing import Manager, Pool
 from pathlib import Path
@@ -101,7 +103,7 @@ def run_esorex(args):
 
     with lock:
         console.print(f"[cyan] 🚀 Start esorex on block #{block_index}[/]")
-        console.print(cmd)
+        console.print(cmd, markup=False)
         sys.stdout.flush()
 
     # Extract output file names
@@ -116,9 +118,20 @@ def run_esorex(args):
     else:
         workdir = "."
 
-    # Run the command in the proper directory and redirect output
-    full_cmd = f"cd {workdir}; {cmd} > {out} 2> {err}"
-    ret = os.system(full_cmd)
+    # Run the command via subprocess (no shell needed)
+    cmd_args = shlex.split(cmd)
+    with (
+        open(Path(workdir) / out, "w", encoding="utf-8") as fout,
+        open(Path(workdir) / err, "w", encoding="utf-8") as ferr,
+    ):
+        result = subprocess.run(
+            cmd_args,
+            cwd=workdir,
+            stdout=fout,
+            stderr=ferr,
+            check=False,
+        )
+    ret = result.returncode
 
     status = "✅" if ret == 0 else "❌"
     with lock:

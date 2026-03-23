@@ -57,13 +57,20 @@ def test_run_esorex_invokes_esorex_command(monkeypatch, tmp_path):
     dummy_console = _ConsoleStub()
     monkeypatch.setattr(auto_pipeline, "console", dummy_console)
 
-    captured_command: dict[str, str] = {}
+    captured: dict[str, object] = {}
 
-    def fake_system(command: str) -> int:
-        captured_command["value"] = command
-        return 0
+    def fake_subprocess_run(
+        cmd_args, *, cwd=None, stdout=None, stderr=None, check=False
+    ):
+        captured["args"] = cmd_args
+        captured["cwd"] = cwd
 
-    monkeypatch.setattr(auto_pipeline.os, "system", fake_system)
+        class _Result:
+            returncode = 0
+
+        return _Result()
+
+    monkeypatch.setattr(auto_pipeline.subprocess, "run", fake_subprocess_run)
 
     workdir = tmp_path / "workdir"
     workdir.mkdir()
@@ -77,11 +84,8 @@ def test_run_esorex_invokes_esorex_command(monkeypatch, tmp_path):
 
     assert result == (block_index, True)
 
-    expected_system_call = (
-        f"cd {workdir}; {base_cmd} > {job_path}.log 2> {job_path}.err"
-    )
-
-    assert captured_command["value"] == expected_system_call
+    assert captured["args"] == ["esorex", f"--working-dir={workdir}", str(job_path)]
+    assert captured["cwd"] == str(workdir)
     assert any(f"Block {block_index}" in message for message in messages)
 
 
