@@ -543,7 +543,6 @@ def calibrate_flux(
 
     # 7. Airmass correction
     if do_airmass_correction:
-        logger.info("Computing airmass correction...")
         output_dir = output_path.parent
         tag_sci = sci_path.stem
         tag_cal = cal_path.stem
