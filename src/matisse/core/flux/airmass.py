@@ -370,6 +370,19 @@ def compute_airmass_correction(
     margin = 0.1 * (wmax_sci - wmin_sci)
     dlambda_sci = get_dlambda(hdul_sci)
 
+    if "IR-N" in tag_sci:
+        detected_band = "N"
+    elif "IR-LM" in tag_sci:
+        detected_band = "LM"
+    else:
+        detected_band = "unknown"
+    logger.info(
+        "Computing airmass correction for SCI (band=%s, airmass=%.3f, PWV=%.1f mm)",
+        detected_band,
+        airmass_sci,
+        pwv_sci,
+    )
+
     input_sci = skycalc_dir / f"skycalc_input_sci_{tag_sci}.txt"
     output_sci = skycalc_dir / f"skycalc_output_sci_{tag_sci}.fits"
     create_skycalc_input(
@@ -437,6 +450,10 @@ def compute_airmass_correction(
     with np.errstate(divide="ignore", invalid="ignore"):
         correction = trans_cal_final / trans_sci_final
         correction = np.where(np.isfinite(correction), correction, 1.0)
+        if detected_band == "LM":
+            correction = correction[
+                ::-1
+            ]  # Reverse to match skycalc output order in LM band
 
     logger.info(
         "Airmass correction computed (median=%.3f, range=[%.3f, %.3f])",
