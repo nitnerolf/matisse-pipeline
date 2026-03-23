@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 from astropy.io import fits
@@ -85,26 +87,30 @@ def test_get_cal_databases_dir_uses_env_override(monkeypatch, tmp_path):
     assert out == tmp_path.resolve()
 
 
-def test_get_cal_databases_dir_falls_back_to_legacy(monkeypatch, tmp_path):
-    legacy = tmp_path / "legacy"
-    legacy.mkdir()
-    (legacy / "dummy.fits").touch()
-
+def test_get_cal_databases_dir_raises_when_zenodo_fails(monkeypatch):
     monkeypatch.delenv("MATISSE_CAL_DB_PATH", raising=False)
-    monkeypatch.setattr(databases, "_LEGACY_BUNDLE", legacy)
     monkeypatch.setattr(
         databases,
         "_ensure_pooch_cache",
         lambda: (_ for _ in ()).throw(RuntimeError("offline")),
     )
 
-    out = databases.get_cal_databases_dir()
-    assert out == legacy
+    with pytest.raises(RuntimeError, match="Calibrator spectral databases not found"):
+        databases.get_cal_databases_dir()
 
 
-def test_prefetch_databases_raises_when_zenodo_pending():
-    with pytest.raises(RuntimeError, match="Zenodo record not yet published"):
-        databases.prefetch_databases()
+def test_prefetch_databases_calls_pooch(monkeypatch):
+    """prefetch_databases delegates to _ensure_pooch_cache."""
+    called = {}
+
+    def fake_ensure():
+        called["yes"] = True
+        return Path("/fake/cache")
+
+    monkeypatch.setattr(databases, "_ensure_pooch_cache", fake_ensure)
+    result = databases.prefetch_databases()
+    assert result == Path("/fake/cache")
+    assert called.get("yes")
 
 
 def test_database_status_env_override(monkeypatch, tmp_path):
@@ -118,16 +124,11 @@ def test_database_status_env_override(monkeypatch, tmp_path):
     assert status["calib_spec_db_v10_supplement.fits"] == "missing"
 
 
-def test_database_status_falls_back_to_legacy(monkeypatch, tmp_path):
+def test_database_status_missing_when_no_cache(monkeypatch, tmp_path):
     import sys
     import types
 
     monkeypatch.delenv("MATISSE_CAL_DB_PATH", raising=False)
-
-    legacy = tmp_path / "legacy"
-    legacy.mkdir()
-    (legacy / "vBoekelDatabase.fits").touch()
-    monkeypatch.setattr(databases, "_LEGACY_BUNDLE", legacy)
 
     cache_root = tmp_path / "cache_root"
     cache_root.mkdir()
@@ -136,7 +137,7 @@ def test_database_status_falls_back_to_legacy(monkeypatch, tmp_path):
 
     status = databases.database_status()
 
-    assert status["vBoekelDatabase.fits"] == "legacy_bundle"
+    assert status["vBoekelDatabase.fits"] == "missing"
     assert status["calib_spec_db_v10.fits"] == "missing"
     assert status["calib_spec_db_v10_supplement.fits"] == "missing"
 

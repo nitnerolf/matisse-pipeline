@@ -80,11 +80,18 @@ if __name__ == '__main__':
     #-----------------------------------------
     #Path to the calibrators spectra databases 
     #-----------------------------------------
-    #a=imp.find_module("libFluxCal")
-    #dir_caldatabases=os.path.dirname(a[1])+'/calib_spec_databases'
-    a=importlib.util.find_spec("libFluxCal")
-    dir_caldatabases=os.path.dirname(a.origin)+'/calib_spec_databases'
-    #dir_caldatabases='/data/users/ama/dev_python/tools/mat_tools/calib_spec_databases'
+    try:
+        from matisse.core.flux.databases import get_cal_databases_dir
+        dir_caldatabases = str(get_cal_databases_dir())
+    except Exception as e:
+        print("\n\033[91mERROR: Calibrator spectral databases not found in cache.\033[0m")
+        print(f"  ({e})")
+        print("\nTo download them, run one of the following:")
+        print("  matisse flux-calibrate   (modern CLI)")
+        print("  matisse doctor           (checks & downloads dependencies)")
+        print("\nOr set the environment variable MATISSE_CAL_DB_PATH to a local copy:")
+        print("  export MATISSE_CAL_DB_PATH=/path/to/calib_spec_databases\n")
+        sys.exit(1)
 
     #---------------------
     # Oifits files sorting
