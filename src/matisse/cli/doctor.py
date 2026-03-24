@@ -213,15 +213,10 @@ def check_calibrator_databases() -> CheckResult:
     override = [
         name for name, status in status_by_file.items() if status == "local_override"
     ]
-    legacy = [
-        name for name, status in status_by_file.items() if status == "legacy_bundle"
-    ]
 
     if not missing:
         if override:
             source = "local override"
-        elif legacy:
-            source = "legacy bundle"
         else:
             source = "cache"
         return CheckResult(
