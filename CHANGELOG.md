@@ -2,6 +2,25 @@
 
 All notable changes to this project will be documented in this file.
 
+## v0.5.0 (2026-03-24)
+
+### Feat
+
+- add reference calibrator database from zenodo
+- add calibration status in doctor
+- add cli command flux_calibrate to perform the calibration
+- add set of function/helpers to perform flux calibration
+
+### Fix
+
+- reverse airmass correction order for L band
+- timeout issue on starflux fallback to local database
+
+### Refactor
+
+- remove legacy calibrator database, point to cache
+- update esorex command execution to use subprocess for better output handling
+
 ## v0.4.0 (2026-03-03)
 
 ### Feat
