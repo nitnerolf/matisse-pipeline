@@ -50,7 +50,13 @@ def generate_sof_files(
     targets = []
     calibs = []
 
-    files = (f for f in input_dir.glob(f"*{band}*.fits") if "LAMP" not in f.name)
+    files = (
+        f
+        for f in input_dir.glob(f"*{band}*")
+        if f.suffix in (".fits", ".gz")
+        and "LAMP" not in f.name
+        and (f.name.endswith(".fits") or f.name.endswith(".fits.gz"))
+    )
     # Single pass: read all headers
     for fits_file in files:
         with fits.open(fits_file) as hdul:
@@ -212,7 +218,9 @@ def rename_calibrated_outputs(
         Suffix to append to the base name. Default is empty string.
     """
     # Rename BCD mode files
-    for fits_file in output_dir.glob("TARGET_CAL_INT_????.fits"):
+    for fits_file in output_dir.glob("TARGET_CAL_INT_????.fits*"):
+        if fits_file.suffix not in (".fits", ".gz"):
+            continue
         try:
             with fits.open(fits_file) as hdul:
                 hdr = hdul[0].header

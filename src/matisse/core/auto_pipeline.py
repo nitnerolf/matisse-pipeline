@@ -188,7 +188,9 @@ def run_pipeline(
     if dirCalib:
         p = Path(dirCalib)
         if p.is_dir():
-            listArchive = glob.glob(dirCalib + "/*.fits")
+            listArchive = [str(f) for f in p.rglob("*.fits")] + [
+                str(f) for f in p.rglob("*.fits.gz")
+            ]
             log.info(f"Calibration directory explicitly provided: {p}")
         else:
             listArchive = []
@@ -368,7 +370,8 @@ def run_pipeline(
             listIter: list[str] = []
             log.info("Listing files from previous iteration...")
             for iter in range(iterNumber - 1):
-                repIterPrev = dirResult + "/Iter" + str(iter + 1)
+                log.info(f"Listing files from iteration {iter + 1}...")
+                repIterPrev = os.path.join(dirResult, "Reduced")
                 listRepIter = [
                     os.path.join(repIterPrev, f)
                     for f in os.listdir(repIterPrev)
@@ -378,7 +381,8 @@ def run_pipeline(
                     listIter = listIter + [
                         os.path.join(elt, f)
                         for f in os.listdir(elt)
-                        if os.path.isfile(os.path.join(elt, f)) and f[-5:] == ".fits"
+                        if os.path.isfile(os.path.join(elt, f))
+                        and (f.endswith(".fits") or f.endswith(".fits.gz"))
                     ]
 
         log.info("Listing reduction blocks...")
@@ -524,7 +528,7 @@ def run_pipeline(
 
         # Create the SOF files
         log.info("Creating the sof files and directories...")
-        repIter = dirResult + "/Iter" + str(iterNumber)
+        repIter = os.path.join(dirResult, "Reduced")
         if os.path.isdir(repIter):
             if overwrite == 1:
                 shutil.rmtree(repIter)
@@ -550,22 +554,32 @@ def run_pipeline(
                 outputDir = os.path.join(repIter, rbname_safe + ".rb")
                 print_sof_status = True
                 if overwritei == 0:
-                    if glob.glob(
-                        os.path.join(outputDir, "*_RAW_INT_*.fits")
-                    ) or glob.glob(os.path.join(outputDir, "IM_BASIC.fits")):
-                        log.info("Block already processed.")
+                    files_found = (
+                        glob.glob(os.path.join(outputDir, "*_RAW_INT_*.fits"))
+                        or glob.glob(os.path.join(outputDir, "*_RAW_INT_*.fits.gz"))
+                        or glob.glob(os.path.join(outputDir, "IM_BASIC.fits"))
+                        or glob.glob(os.path.join(outputDir, "IM_BASIC.fits.gz"))
+                        or glob.glob(os.path.join(outputDir, "OBS_FLATFIELD.fits"))
+                        or glob.glob(os.path.join(outputDir, "OBS_FLATFIELD.fits.gz"))
+                        or glob.glob(os.path.join(outputDir, "KAPPA_MATRIX.fits"))
+                        or glob.glob(os.path.join(outputDir, "KAPPA_MATRIX.fits.gz"))
+                        or glob.glob(os.path.join(outputDir, "SHIFT_MAP.fits"))
+                        or glob.glob(os.path.join(outputDir, "SHIFT_MAP.fits.gz"))
+                    )
+                    if files_found:
+                        existing_filename = Path(files_found[0]).name
+                        log.info(
+                            f"Block already processed, file {existing_filename} exists."
+                        )
                         print_sof_status = False
                     else:
                         overwritei = 1
+                        log.info("Block will be processed.")
+
                         # NOTES (aso) :
                         # overwritei = 1 (to be checked: calibration files are
                         # systematically reprocessed when overwritei == 1).
                         # Do we actually want this behavior?
-
-                if glob.glob(os.path.join(outputDir, "*FIELD.fits")):
-                    skip_calib_iter = True
-                elif glob.glob(os.path.join(outputDir, "SHIFT_MAP.fits")):
-                    skip_calib_iter = True
 
                 resol = "no res"
                 if os.path.exists(sofname):
@@ -695,6 +709,7 @@ def run_pipeline(
                     listCmdEsorex.append(cmd)
             else:
                 cptStatusZero += 1
+                log.info("No recipe found to run for this block?")
             cpt += 1
 
         if not check_blocks:
@@ -713,6 +728,7 @@ def run_pipeline(
 
         # Add MDFC Fluxes to CALIB_RAW_INT and TARGET_RAW_INT
         list_oifits_files = glob.glob(repIter + "/*.rb/*_RAW_INT*.fits")
+        list_oifits_files += glob.glob(repIter + "/*.rb/*_RAW_INT*.fits.gz")
         for oifits_filename in list_oifits_files:
             hdu = fits.open(oifits_filename, mode="update")
             try:

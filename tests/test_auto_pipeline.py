@@ -200,7 +200,7 @@ def test_run_pipeline_existing_output_dir(monkeypatch, tmp_path):
     tplstart = "2025-01-01T00:00:00"
     chip = "HAWAII-2RG"
     rbname_safe = f"recipe.{tplstart}.HAWAII-2RG".replace(":", "_")
-    iter_dir = result_dir / "Iter1"
+    iter_dir = result_dir / "Reduced"
     iter_dir.mkdir()
     output_dir = iter_dir / f"{rbname_safe}.rb"
     output_dir.mkdir()
@@ -578,7 +578,7 @@ def test_run_pipeline_writes_sof_and_invokes_esorex(tmp_path, monkeypatch):
         check_calib=False,
     )
 
-    iter_dir = result_dir / "Iter1"
+    iter_dir = result_dir / "Reduced"
     sof_path = iter_dir / "mat_im_basic.2025-01-02T00_00_00.HAWAII-2RG.sof"
     output_dir = iter_dir / "mat_im_basic.2025-01-02T00_00_00.HAWAII-2RG.rb"
 
@@ -767,5 +767,5 @@ def test_run_pipeline_uses_previous_iteration_outputs(tmp_path, monkeypatch):
     )
 
     assert any(
-        any("Iter1" in path for path in sources) for sources in captured_sources
+        any("Reduced" in path for path in sources) for sources in captured_sources
     ), "expected previous iteration files to be reused as calibrations"

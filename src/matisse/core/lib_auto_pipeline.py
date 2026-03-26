@@ -323,6 +323,7 @@ def matisse_calib(
                 else:
                     res.append((elt, tagCalib))
                     nbCalib += 1
+        logger.info(f"action est_flat, found {nbCalib} calibration files")
         if nbCalib == 3:
             status = 1
         else:
@@ -624,6 +625,7 @@ def matisse_calib(
         if (keyDetChipName == "AQUARIUS" and keyInsPinId != "PHOTO") or (
             keyDetChipName == "HAWAII-2RG" and keyInsPilId != "PHOTO"
         ):
+            logger.info(f"action raw_estimates, found {nbCalib} calibration files")
             if nbCalib >= 4:
                 status = 1
             else:
@@ -808,6 +810,8 @@ def matisse_calib(
                 else:
                     res.append((elt, tagCalib))
                     nbCalib += 1
+
+        logger.info(f"action est_kappa, found {nbCalib} calibration files")
         if nbCalib == 4:
             status = 1
         else:
@@ -946,6 +950,7 @@ def matisse_calib(
                 else:
                     res.append((elt, tagCalib))
                     nbCalib += 1
+        logger.info(f"action est_shift, found {nbCalib} calibration files")
         if nbCalib == 3:
             status = 1
         else:

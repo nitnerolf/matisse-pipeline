@@ -65,9 +65,13 @@ def change_oifits_filename(oifits: Path) -> None:
         bcd2 = hdu.get("HIERARCH ESO INS BCD2 NAME", "noBCD2")
 
         # Build new filename
+        if oifits.suffix == ".gz":
+            suffix = ".fits.gz"
+        elif oifits.suffix == ".fits":
+            suffix = ".fits"
         new_name = (
             f"{tpl_start}_{targ}_{stations_config}_{chip_type}_"
-            f"{resol}_{bcd1}_{bcd2}_{chop_mode}.fits"
+            f"{resol}_{bcd1}_{bcd2}_{chop_mode}{suffix}"
         )
 
         new_path = direc / new_name
@@ -131,8 +135,9 @@ def tidyup_path(input_dir: Path) -> None:
     # Collect recursively all FITS files
     fits_files: list[Path] = [
         p
-        for p in input_dir.rglob("*.fits")
-        if not any(fnmatch(p.name, pat) for pat in SKIP_PATTERNS)
+        for p in input_dir.rglob("*")
+        if (p.suffix in (".fits", ".gz") or p.name.endswith(".fits.gz"))
+        and not any(fnmatch(p.name, pat) for pat in SKIP_PATTERNS)
     ]
     if len(fits_files) == 0:
         log.info(f"No OIFITS/FITS files found in {input_dir}")
